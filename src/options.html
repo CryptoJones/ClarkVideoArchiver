@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clark Video Archiver — Setup</title>
+    <link rel="stylesheet" href="downloader.css" />
+    <style>
+      .field { display: grid; gap: 5px; margin-bottom: 16px; }
+      .field label { font-weight: 600; }
+      .field .hint { color: var(--muted); font-size: 12px; margin: 0; }
+      input[type="text"], input[type="url"], input[type="password"], select {
+        font: inherit;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--fg);
+        width: 100%;
+      }
+      .row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+      fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin: 0 0 22px; }
+      legend { font-weight: 600; padding: 0 6px; }
+      code.inline { display: inline; padding: 1px 5px; margin: 0; }
+
+      nav.tabs { display: flex; gap: 4px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+      nav.tabs button {
+        border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+        background: none; padding: 9px 14px; color: var(--muted); font-weight: 600;
+      }
+      nav.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+
+      ol.steps { padding-left: 0; list-style: none; counter-reset: step; margin: 0; }
+      ol.steps > li {
+        counter-increment: step;
+        position: relative;
+        padding: 0 0 22px 40px;
+        border-left: 1px solid var(--line);
+        margin-left: 13px;
+      }
+      ol.steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
+      ol.steps > li::before {
+        content: counter(step);
+        position: absolute; left: -13px; top: -2px;
+        width: 26px; height: 26px; border-radius: 50%;
+        background: var(--accent); color: var(--accent-fg);
+        display: grid; place-items: center;
+        font-size: 12px; font-weight: 700;
+      }
+      ol.steps h3 { margin: 2px 0 6px; font-size: 14px; }
+      ol.steps p { margin: 0 0 8px; color: var(--muted); }
+      ol.steps p strong { color: var(--fg); }
+
+      .cmd { display: flex; gap: 8px; align-items: stretch; margin-bottom: 8px; }
+      .cmd code { flex: 1; margin: 0; }
+      .cmd button { flex: 0 0 auto; padding: 6px 12px; font-size: 12px; }
+
+      .kv { border-collapse: collapse; width: 100%; margin: 0; font-size: 13px; }
+      .kv td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      .kv td:first-child { font-weight: 600; width: 34%; }
+      .kv tr:last-child td { border-bottom: 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Clark Video Archiver</h1>
+      <p class="detail">Setup and usage.</p>
+
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="start" aria-selected="true">Getting started</button>
+        <button type="button" role="tab" data-tab="helper" aria-selected="false">Helper service</button>
+        <button type="button" role="tab" data-tab="trouble" aria-selected="false">Troubleshooting</button>
+      </nav>
+
+      <!-- ----------------------------------------------- getting started -->
+      <section id="tab-start" class="tabpanel">
+        <ol class="steps">
+          <li>
+            <h3>Save a video</h3>
+            <p>
+              <strong>Right-click any video &rarr; &ldquo;Save this video to disk&rdquo;.</strong>
+              That is the main path, and on most sites it is all you need.
+            </p>
+          </li>
+          <li>
+            <h3>If the right-click menu has no video option</h3>
+            <p>
+              Many players stack an invisible layer over the video, so the browser
+              never registers that you right-clicked one. Use
+              <strong>right-click &rarr; Clark Video Archiver &rarr; Save video on
+              this page</strong> instead.
+            </p>
+          </li>
+          <li>
+            <h3>Otherwise use the toolbar button</h3>
+            <p>
+              It lists every media file seen in the tab, including streams caught
+              on the network that never appear in the page itself. The number on
+              the icon is how many were found.
+            </p>
+            <p>
+              <strong>Press play first.</strong> Most players request nothing until
+              playback starts, so a page checked before you press play often looks
+              empty. Play the video, then press <strong>Rescan</strong>.
+            </p>
+          </li>
+          <li>
+            <h3>Streaming video says &ldquo;Build video&rdquo;</h3>
+            <p>
+              A stream is not one file &mdash; it is hundreds of small segments
+              listed in a playlist. <strong>Build video</strong> opens a page that
+              downloads every segment and joins them back together. Choose a
+              quality if asked, then leave that tab open until it finishes.
+            </p>
+          </li>
+          <li>
+            <h3>Subtitles</h3>
+            <p>
+              Tick <strong>Also save subtitles</strong> in the toolbar popup and
+              any subtitle track the stream offers is saved beside the video as a
+              <code class="inline">.vtt</code> file, named to match so players
+              pick it up automatically.
+            </p>
+            <p>
+              Only streams that actually publish a subtitle track have one to
+              save; you are told when there is none rather than left guessing.
+            </p>
+          </li>
+          <li>
+            <h3>Where files go</h3>
+            <p>
+              <code class="inline">Downloads/ClarkVideoArchiver/</code>, named after
+              the page title. Tick <strong>Ask where to save each file</strong> in
+              the toolbar popup to choose a location each time instead.
+            </p>
+          </li>
+        </ol>
+      </section>
+
+      <!-- ------------------------------------------------------- helper -->
+      <section id="tab-helper" class="tabpanel" hidden>
+        <p class="notice info">
+          <strong>Optional.</strong> Everything on the first tab works without
+          this. Set it up only if you want MP4 instead of .ts files, or want
+          awkward sites handled by yt-dlp.
+        </p>
+
+        <p class="detail">
+          Two things are impossible inside a browser page: converting MPEG-TS
+          streams to MP4, and joining separate audio and video tracks. Both need a
+          real media toolchain, so the extension can hand those jobs to a small
+          program you run yourself. Nothing is sent anywhere else.
+        </p>
+
+        <ol class="steps">
+          <li>
+            <h3>Install ffmpeg, and yt-dlp if you want it</h3>
+            <p>
+              ffmpeg is required. yt-dlp is needed only for page URLs rather than
+              direct video links. Linux or macOS, with Python 3.9 or newer.
+            </p>
+            <div class="cmd">
+              <code>sudo apt install ffmpeg &amp;&amp; pip install yt-dlp</code>
+              <button type="button" class="copy">Copy</button>
+            </div>
+            <div class="cmd">
+              <code>brew install ffmpeg yt-dlp</code>
+              <button type="button" class="copy">Copy</button>
+            </div>
+          </li>
+          <li>
+            <h3>Start the helper</h3>
+            <p>Run this from the folder holding the extension source:</p>
+            <div class="cmd">
+              <code>./server/cva_helper.py</code>
+              <button type="button" class="copy">Copy</button>
+            </div>
+            <p>
+              It prints the address it is listening on, then keeps running. Leave
+              that terminal open while you use it.
+            </p>
+          </li>
+          <li>
+            <h3>Connect it below</h3>
+            <p>
+              Tick <strong>Enable</strong>, leave the endpoint alone unless you
+              changed the port, then press <strong>Test connection</strong>.
+            </p>
+          </li>
+          <li>
+            <h3>Use it</h3>
+            <p>
+              A <strong>Helper</strong> button now appears beside each video in the
+              toolbar popup. It opens a progress page that submits the job, waits
+              for the service, and saves the finished file.
+            </p>
+          </li>
+        </ol>
+
+        <fieldset>
+          <legend>Connection</legend>
+
+          <div class="row">
+            <input type="checkbox" id="enabled" />
+            <label for="enabled">Enable helper service</label>
+          </div>
+
+          <div id="config">
+            <div class="field">
+              <label for="adapter">Service type</label>
+              <select id="adapter"></select>
+              <p class="hint" id="adapter-note"></p>
+            </div>
+
+            <div class="field">
+              <label for="endpoint">Endpoint</label>
+              <input type="url" id="endpoint" placeholder="http://127.0.0.1:8788" />
+              <p class="hint">The address the helper printed when it started.</p>
+            </div>
+
+            <div class="field">
+              <label for="token">
+                Token <span class="hint">(only if you started it with --token)</span>
+              </label>
+              <input type="password" id="token" placeholder="leave blank if unset" />
+            </div>
+
+            <div class="actions">
+              <button id="test" type="button">Test connection</button>
+              <button id="save" type="button" class="primary">Save</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <div id="warnings" class="warnings"></div>
+      </section>
+
+      <!-- ----------------------------------------------- troubleshooting -->
+      <section id="tab-trouble" class="tabpanel" hidden>
+        <table class="kv">
+          <tr>
+            <td>The popup finds nothing</td>
+            <td>Press play on the video, then press <strong>Rescan</strong>. Most players request nothing until playback starts.</td>
+          </tr>
+          <tr>
+            <td>No video option when right-clicking</td>
+            <td>The site has a layer over the video. Use <strong>Clark Video Archiver &rarr; Save video on this page</strong>, or the toolbar button.</td>
+          </tr>
+          <tr>
+            <td>Nothing found on any site (Firefox)</td>
+            <td>
+              Site access is normally granted automatically. If nothing is found
+              anywhere, open <code class="inline">about:addons</code>, select this
+              extension, and check <strong>Permissions and data &rarr; Access your
+              data for all websites</strong>.
+            </td>
+          </tr>
+          <tr>
+            <td>I got a .ts file, not .mp4</td>
+            <td>
+              The stream used MPEG-TS segments. That file is valid and plays in VLC
+              or mpv. For an MP4, either set up the helper service, or convert it:
+              <code class="inline">ffmpeg -i in.ts -c copy out.mp4</code>
+            </td>
+          </tr>
+          <tr>
+            <td>The video has no sound</td>
+            <td>
+              That stream carries audio as a separate track. Save the audio entry
+              from the popup too, then join them:
+              <code class="inline">ffmpeg -i video.mp4 -i audio.mp4 -c copy out.mp4</code>
+            </td>
+          </tr>
+          <tr>
+            <td>No subtitles were saved</td>
+            <td>
+              Only streams publishing a subtitle track have one to save. Burned-in
+              captions are part of the picture and cannot be extracted. If the
+              build page said the stream lists no subtitle track, there was
+              nothing to fetch.
+            </td>
+          </tr>
+          <tr>
+            <td>Netflix, Disney+ and similar do not work</td>
+            <td>Those use DRM. The decrypted video never exists anywhere an extension can reach, so no extension can save them. This cannot be fixed.</td>
+          </tr>
+          <tr>
+            <td>Test connection fails</td>
+            <td>Check the helper terminal is still running and the port matches what it printed. If you started it with <code class="inline">--token</code>, the same token must be entered here.</td>
+          </tr>
+          <tr>
+            <td>A download stopped partway</td>
+            <td>Closing the build tab cancels it. Leave that tab open until it reports Saved.</td>
+          </tr>
+        </table>
+      </section>
+
+      <p class="footnote">
+        Settings are stored locally in this browser. The helper endpoint is only
+        contacted when you press the Helper button.
+      </p>
+    </main>
+
+    <script src="common.js"></script>
+    <script src="helper.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

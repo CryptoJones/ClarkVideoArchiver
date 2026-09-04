@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clark Video Archiver</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Clark Video Archiver</h1>
+      <button id="refresh" type="button" title="Rescan this tab">Rescan</button>
+    </header>
+
+    <div id="list" class="list" aria-live="polite">
+      <p class="empty">Scanning this tab&hellip;</p>
+    </div>
+
+    <section id="ffmpeg" class="ffmpeg" hidden>
+      <h2>Streaming playlist</h2>
+      <p class="hint">
+        This is an HLS/DASH stream — hundreds of segments, not one file. Run this
+        to mux it into an MP4:
+      </p>
+      <code id="ffmpeg-cmd"></code>
+      <div class="ffmpeg-actions">
+        <button id="run-ffmpeg" type="button" class="primary">Run it for me</button>
+        <button id="copy-ffmpeg" type="button">Copy command</button>
+      </div>
+      <p class="status" id="ffmpeg-status"></p>
+    </section>
+
+    <footer>
+      <label class="toggle">
+        <input type="checkbox" id="saveAs" />
+        <span>Ask where to save each file</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="saveSubtitles" />
+        <span>Also save subtitles</span>
+      </label>
+      <p class="note">Saves to your Downloads folder, under <code>ClarkVideoArchiver/</code>.</p>
+      <button type="button" id="open-options" class="settings-link">Setup guide &amp; helper settings</button>
+    </footer>
+
+    <script src="common.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

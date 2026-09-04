@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clark Video Archiver — Stream download</title>
+    <link rel="stylesheet" href="downloader.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Building video from playlist</h1>
+      <p id="source" class="source"></p>
+
+      <p id="status" class="status">Starting&hellip;</p>
+      <p id="detail" class="detail"></p>
+
+      <section id="variants" class="variants" hidden>
+        <div id="variant-list" class="variant-list"></div>
+      </section>
+
+      <div id="warnings" class="warnings"></div>
+
+      <div id="progress-wrap" class="progress-wrap" hidden>
+        <div class="track"><div id="bar" class="bar"></div></div>
+        <p id="counts" class="counts"></p>
+        <p id="rate" class="rate"></p>
+      </div>
+
+      <div class="actions">
+        <button id="start" type="button" class="primary" hidden>Download</button>
+        <button id="cancel" type="button" hidden>Cancel</button>
+      </div>
+
+      <p class="footnote">
+        Keep this tab open until the download finishes. Segments are fetched,
+        decrypted if the stream uses standard AES-128, and joined in playlist
+        order.
+      </p>
+    </main>
+
+    <script src="common.js"></script>
+    <script src="hls.js"></script>
+    <script src="subs.js"></script>
+    <script src="helper.js"></script>
+    <script src="downloader.js"></script>
+  </body>
+</html>
