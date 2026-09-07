@@ -84,9 +84,28 @@ h2 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
   cursor: pointer;
 }
 
-.variant:hover { border-color: var(--accent); }
+.variant:hover:not(:disabled) { border-color: var(--accent); }
 .variant strong { font-size: 15px; }
 .variant span { color: var(--muted); font-size: 12px; }
+.variant:disabled { cursor: default; opacity: .6; }
+
+/* The chosen row has to be obvious at a glance: when a saved preference picks
+   for you, this is the only thing on screen that says which one it took. */
+.variant.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.variant.selected::after {
+  content: "selected";
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.hint { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
 
 .warnings { margin: 12px 0; display: grid; gap: 8px; }
 

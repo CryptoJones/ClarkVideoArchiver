@@ -11,6 +11,7 @@ const els = {
   status: document.getElementById('status'),
   detail: document.getElementById('detail'),
   variants: document.getElementById('variants'),
+  variantHint: document.getElementById('variant-hint'),
   variantList: document.getElementById('variant-list'),
   progressWrap: document.getElementById('progress-wrap'),
   bar: document.getElementById('bar'),
@@ -36,6 +37,9 @@ let plan = null;
 let subtitleTracks = [];
 // Likewise the audio rendition, when the video variant has no sound of its own.
 let audioTrack = null;
+// The saved quality preference, read once at startup. It only ever preselects:
+// the variant list stays on screen so any pick it makes can be overruled.
+let quality = CVA.DEFAULT_QUALITY;
 
 function setStatus(text, kind = '') {
   els.status.textContent = text;
@@ -217,6 +221,9 @@ async function run() {
   els.start.disabled = true;
   els.cancel.hidden = false;
   els.progressWrap.hidden = false;
+  // Switching variant mid-download would append segments from a second stream
+  // to the parts already collected, so the choice is frozen once it starts.
+  setVariantsEnabled(false);
 
   const total = plan.segments.length;
   // Blobs rather than ArrayBuffers: the browser can page blob data out to disk,
@@ -358,27 +365,70 @@ async function maybeSaveSubtitles(signal) {
 
 /* ---------------------------- variant selection --------------------------- */
 
-function showVariants(master) {
+function variantLabel(v) {
+  return v.height ? `${v.height}p` : v.label;
+}
+
+function setVariantsEnabled(enabled) {
+  for (const btn of els.variantList.querySelectorAll('button')) btn.disabled = !enabled;
+}
+
+// Reading the playlist for a variant is cheap, so switching quality just
+// re-plans from scratch. Anything the previous plan warned about belongs to
+// that variant and would be misleading against this one.
+async function choose(master, v, btn) {
+  for (const b of els.variantList.querySelectorAll('button')) {
+    b.classList.toggle('selected', b === btn);
+  }
+  els.start.hidden = true;
+  els.start.disabled = true;
+  clearWarnings();
+  subtitleTracks = HLS.subtitleRenditions(master.media, v.subtitleGroup);
+  await prepare(v.url, variantLabel(v), HLS.audioRenditionFor(v, master.media));
+}
+
+// The list is deliberately left on screen after a pick. It is the only place
+// the user gets to say what size they want, so it has to stay reachable right
+// up until the download actually starts.
+async function showVariants(master) {
   els.variants.hidden = false;
   els.variantList.textContent = '';
 
+  const auto = CVA.pickVariant(master.variants, quality);
+  let autoButton = null;
+
   for (const v of master.variants) {
-    const audio = HLS.audioRenditionFor(v, master.media);
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'variant';
-    const label = v.height ? `${v.height}p` : v.label;
     const rate = v.bandwidth ? ` · ${Math.round(v.bandwidth / 1000)} kbps` : '';
-    btn.innerHTML = `<strong></strong><span></span>`;
-    btn.querySelector('strong').textContent = label;
+    btn.innerHTML = '<strong></strong><span></span>';
+    btn.querySelector('strong').textContent = variantLabel(v);
     btn.querySelector('span').textContent = `${v.width && v.height ? `${v.width}x${v.height}` : ''}${rate}`;
-
-    btn.addEventListener('click', async () => {
-      els.variants.hidden = true;
-      subtitleTracks = HLS.subtitleRenditions(master.media, v.subtitleGroup);
-      await prepare(v.url, label, audio);
-    });
+    btn.addEventListener('click', () => { choose(master, v, btn); });
     els.variantList.append(btn);
+    if (v === auto) autoButton = btn;
+  }
+
+  if (quality === 'ask' || !auto) {
+    setStatus('Choose a quality');
+    return;
+  }
+
+  els.variantHint.textContent =
+    `Preselected from your "${CVA.qualityLabel(quality)}" setting. Pick another to change it.`;
+  await choose(master, auto, autoButton);
+
+  // Asking for 1080p on a stream that stops at 480p gets 480p, not nothing —
+  // but silently handing over a smaller file than requested would look like a
+  // bug, so say what happened.
+  const cap = CVA.maxHeightFor(quality);
+  if (cap && auto.height && auto.height > cap) {
+    warn(
+      `This stream offers nothing at or below ${cap}p. The smallest it publishes `
+      + `(${variantLabel(auto)}) is selected instead.`,
+      'info',
+    );
   }
 }
 
@@ -441,10 +491,17 @@ async function runHelper() {
 
   const { saveSubtitles = false } = await api.storage.local.get('saveSubtitles');
 
+  // The service resolves formats itself, so there is nothing here to pick
+  // from: the preference is passed through and applied at the far end.
+  // 'ask' has no meaning across that boundary and means "best" there.
+  const wanted = quality === 'ask' ? 'best' : quality;
+  els.detail.textContent = `Quality: ${CVA.qualityLabel(wanted)}`;
+
   setStatus('Submitting job...');
   const { jobId } = await adapter.submit(cfg, {
     url: playlistUrl,
     format,
+    quality: wanted,
     title: pageTitle,
     referer: params.get('referer') || '',
     subtitles: saveSubtitles,
@@ -490,6 +547,9 @@ async function init() {
     return;
   }
 
+  const stored = await api.storage.local.get('quality');
+  quality = CVA.normalizeQuality(stored?.quality ?? CVA.DEFAULT_QUALITY);
+
   if (mode === 'helper') {
     try {
       await runHelper();
@@ -508,11 +568,22 @@ async function init() {
     if (parsed.isMaster) {
       if (!parsed.variants.length) throw new Error('Master playlist lists no variants.');
       setStatus('Choose a quality');
-      showVariants(parsed);
+      await showVariants(parsed);
       return;
     }
     subtitleTracks = [];
     await prepare(playlistUrl, '', null);
+    // A media playlist is one rendition; there is no master listing the others,
+    // so a preference cannot be honoured here. Better to say that than to let
+    // the setting look ignored.
+    if (quality !== 'ask' && quality !== 'best') {
+      warn(
+        `This is a single-quality playlist, so your "${CVA.qualityLabel(quality)}" setting `
+        + 'has nothing to choose between. Open the toolbar button and build from the '
+        + 'stream marked "stream" if the site publishes a master playlist too.',
+        'info',
+      );
+    }
   } catch (err) {
     setStatus('Failed', 'error');
     warn(String(err.message || err), 'error');
@@ -525,6 +596,9 @@ els.start.addEventListener('click', () => {
     if (String(err.message || err) !== 'Cancelled.') warn(String(err.message || err), 'error');
     els.start.disabled = false;
     els.cancel.hidden = true;
+    // A failed or cancelled run leaves nothing half-written, so another
+    // quality is a fair thing to try next.
+    setVariantsEnabled(true);
   });
 });
 

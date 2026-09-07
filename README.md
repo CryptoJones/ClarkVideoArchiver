@@ -30,6 +30,31 @@ Load it (details in [Install](#install) below), then:
 Files land in `Downloads/ClarkVideoArchiver/`, named after the page title.
 Tick **Also save subtitles** in the popup to save any subtitle track alongside.
 
+### Quality
+
+Streams are usually published at several sizes. The **Quality** menu at the
+bottom of the popup says which one to take:
+
+| Setting | What it does |
+|---|---|
+| **Ask each time** (default) | The build page lists every size and waits for you. |
+| **Best available** | Tallest variant on offer. |
+| **720p or lower** (and the other heights) | Tallest variant at or below that height. |
+| **Smallest file** | Shortest variant on offer. |
+
+A height is a ceiling, not a demand: ask for 1080p on a stream that stops at
+480p and you get the 480p, with a note saying so, rather than a failure. Ask for
+240p on a stream that starts at 360p and you get the 360p — the fallback is
+always *down* towards the smaller file, never up.
+
+Whatever the setting chooses, the build page still lists every size and marks
+the one it took, so it can be overruled before you press **Download**. The
+setting is sent to the [helper service](#optional-helper-service) too, which
+applies it with `ffmpeg -map` for HLS variants and `-f` for yt-dlp.
+
+Quality applies to streams. A plain video file is served at one size, so there
+is nothing to choose between.
+
 Want MP4 instead of `.ts`, or awkward sites handled by yt-dlp? That needs the
 [optional helper service](#optional-helper-service).
 
@@ -296,7 +321,7 @@ right order.
 
 | Path | Role |
 |---|---|
-| `src/common.js` | URL classification, filename building. Loaded in every context. |
+| `src/common.js` | URL classification, filename building, quality preference. Loaded in every context. |
 | `src/hls.js` | HLS playlist parsing. Pure functions, no I/O — all of it unit-tested. |
 | `src/subs.js` | WebVTT cue parsing, segment merging, SRT conversion. Pure. |
 | `src/downloader.*` | The stream build page: segment fetching, AES-128 decryption, assembly, progress. |
@@ -315,9 +340,9 @@ platforms — which also strips the `..` sequences Chrome's downloads API reject
 
 ### Verification status
 
-Verified: 124 unit tests (32 filename/classification helpers + 38 HLS parser +
-25 service adapters + 29 WebVTT), plus an end-to-end assembly test against real
-ffmpeg-generated streams. All scripts parse, the server compiles, and
+Verified: 144 unit tests (52 filename/classification/quality helpers + 38 HLS
+parser + 25 service adapters + 29 WebVTT), plus an end-to-end assembly test
+against real ffmpeg-generated streams. All scripts parse, the server compiles, and
 `web-ext lint` reports 0 errors / 0 warnings.
 
 The HLS pipeline is proven end-to-end against real ffmpeg-generated streams —
@@ -327,6 +352,12 @@ fully decode at the correct duration with both video and audio intact.
 The helper service is proven end-to-end too: submitting a live `.m3u8` produced
 a 12.03s MP4 (h264 + aac) that decodes cleanly, fetched back over the file
 endpoint.
+
+Server-side quality selection is proven against a generated 720p/480p/360p
+master playlist: every setting (`best`, each height, an unreachably low ceiling,
+`worst`, and a malformed value) produced an MP4 at the expected height with its
+audio intact. The yt-dlp selectors were checked separately against a synthetic
+format ladder via `--load-info-json`, which needs no network.
 
 Both browsers were driven through the full flow by hand — loading, detection,
 quality selection, download, and verification — against the four providers

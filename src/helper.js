@@ -57,6 +57,9 @@ const cvaHelper = {
       body: JSON.stringify({
         url: job.url,
         format: job.format || 'video',
+        // A ceiling, not a demand — the service falls back to whatever the
+        // source actually publishes. Older services ignore the field.
+        quality: job.quality || 'best',
         title: job.title || '',
         referer: job.referer || '',
         subtitles: Boolean(job.subtitles),

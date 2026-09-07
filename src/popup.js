@@ -5,12 +5,18 @@ const ffmpegEl = document.getElementById('ffmpeg');
 const ffmpegCmdEl = document.getElementById('ffmpeg-cmd');
 const saveAsEl = document.getElementById('saveAs');
 const saveSubsEl = document.getElementById('saveSubtitles');
+const qualityEl = document.getElementById('quality');
+const qualityNoteEl = document.getElementById('quality-note');
 const runFfmpegEl = document.getElementById('run-ffmpeg');
 const ffmpegStatusEl = document.getElementById('ffmpeg-status');
 
 let currentTab = null;
 let helperEnabled = false;
 let lastManifestUrl = '';
+// Whether anything in this tab actually offers a choice of size. A plain file
+// is served at one size only, so the note has to say so rather than implying
+// the preference will do something it cannot.
+let hasStream = false;
 
 function el(tag, props = {}, children = []) {
   const node = Object.assign(document.createElement(tag), props);
@@ -28,6 +34,29 @@ function displayUrl(url) {
     return url;
   }
 }
+
+/* -------------------------------- quality -------------------------------- */
+
+for (const choice of CVA.QUALITY_CHOICES) {
+  qualityEl.append(el('option', { value: choice.value, textContent: choice.label }));
+}
+
+function syncQualityNote() {
+  const q = CVA.normalizeQuality(qualityEl.value);
+  if (!hasStream) {
+    qualityNoteEl.textContent =
+      'Only streams come in several sizes. A plain file is saved exactly as the site serves it.';
+    return;
+  }
+  qualityNoteEl.textContent = q === 'ask'
+    ? 'The build page will list every size the stream offers and let you pick one.'
+    : `Streams build at ${CVA.qualityLabel(q).toLowerCase()}. You can still change it on the build page.`;
+}
+
+qualityEl.addEventListener('change', async () => {
+  await api.storage.local.set({ quality: CVA.normalizeQuality(qualityEl.value) });
+  syncQualityNote();
+});
 
 function facts(item) {
   const out = [];
@@ -50,6 +79,8 @@ function facts(item) {
 
 function render(items, lastFfmpeg) {
   listEl.textContent = '';
+  hasStream = items.some((i) => i.kind === 'manifest');
+  syncQualityNote();
 
   if (!items.length) {
     listEl.append(
@@ -211,11 +242,12 @@ function merge(detections, dom) {
 async function load() {
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   currentTab = tab;
-  const { saveAs = false, saveSubtitles = false, helper } = await api.storage.local.get(
-    ['saveAs', 'saveSubtitles', 'helper'],
+  const { saveAs = false, saveSubtitles = false, quality, helper } = await api.storage.local.get(
+    ['saveAs', 'saveSubtitles', 'quality', 'helper'],
   );
   saveAsEl.checked = saveAs;
   saveSubsEl.checked = saveSubtitles;
+  qualityEl.value = CVA.normalizeQuality(quality ?? CVA.DEFAULT_QUALITY);
   helperEnabled = Boolean(helper?.enabled && helper?.endpoint);
 
   const state = await api.runtime.sendMessage({ type: 'getState', tabId: tab.id })
