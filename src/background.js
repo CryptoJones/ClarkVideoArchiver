@@ -57,11 +57,14 @@ async function recordDetection(tabId, entry) {
   const id = identityOf(entry.url);
   const existing = list.find((e) => identityOf(e.url) === id);
   if (existing) {
-    // Keep the largest response seen; it is closest to the whole file.
-    if ((entry.size || 0) > (existing.size || 0)) {
-      existing.size = entry.size;
-      await writeStore(store);
+    // The same video can arrive from both the DOM scan (which knows its
+    // dimensions) and the sniffer (which knows its size); keep the best of each.
+    let changed = false;
+    if ((entry.size || 0) > (existing.size || 0)) { existing.size = entry.size; changed = true; }
+    for (const k of ['width', 'height', 'duration', 'mimeType']) {
+      if (entry[k] && !existing[k]) { existing[k] = entry[k]; changed = true; }
     }
+    if (changed) await writeStore(store);
     return;
   }
   list.unshift({ ...entry, at: Date.now() });
@@ -103,15 +106,20 @@ api.webRequest.onHeadersReceived.addListener(
   (details) => {
     const { tabId, url, responseHeaders, statusCode } = details;
     if (statusCode >= 400) return;
-    // 206 Partial Content is one chunk of a range request. Players fetch a
-    // progressive MP4 in many chunks, and listing each one fills the popup with
-    // rows that all point at the same video.
-    if (statusCode === 206) return;
     const mimeType = headerValue(responseHeaders, 'content-type').split(';')[0].trim();
     const kind = CVA.classifyUrl(url, mimeType);
     if (!kind || kind === 'blob' || kind === 'data') return;
 
-    const size = Number(headerValue(responseHeaders, 'content-length')) || 0;
+    // A <video> element always asks for "Range: bytes=0-", so a progressive
+    // MP4 arrives as a series of 206 Partial Content chunks and often never as
+    // a 200. Each chunk's Content-Length is only its own slice; the whole file's
+    // size is the total in Content-Range ("bytes 0-1023/4194304"). The chunks
+    // all share a URL, so recordDetection folds them into one row.
+    let size = Number(headerValue(responseHeaders, 'content-length')) || 0;
+    if (statusCode === 206) {
+      const total = headerValue(responseHeaders, 'content-range').match(/\/(\d+)\s*$/);
+      size = total ? Number(total[1]) : 0;
+    }
     // Media segments arrive in hundreds of tiny chunks; only the manifest that
     // stitches them together is worth showing, so drop the noise.
     const isSegment = /\.(m4s|ts)(?=$|[?#])/i.test(url);
@@ -328,10 +336,22 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'domFound': {
         // The content script reports <video> elements it sees, including ones
         // whose bytes were fetched before the extension started listening.
+        // This is also how videos inside iframes reach the popup: tabs.sendMessage
+        // without a frameId returns only the first frame's reply, which is
+        // almost always the empty top frame, so the frames push instead.
         for (const v of msg.videos || []) {
-          if (CVA.classifyUrl(v.url, v.mimeType) === 'file') {
-            await recordDetection(tabId, { url: v.url, kind: 'file', mimeType: v.mimeType || '', size: 0, source: 'dom' });
-          }
+          const kind = CVA.classifyUrl(v.url, v.mimeType);
+          if (kind !== 'file' && kind !== 'manifest') continue;
+          await recordDetection(tabId, {
+            url: v.url,
+            kind,
+            mimeType: v.mimeType || '',
+            size: 0,
+            width: v.width || 0,
+            height: v.height || 0,
+            duration: v.duration || 0,
+            source: 'dom',
+          });
         }
         sendResponse({ ok: true });
         return;
