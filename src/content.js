@@ -45,8 +45,20 @@ function describe(el, index) {
   };
 }
 
+// Web components put their <video> inside a shadow root, where a plain
+// querySelectorAll from the document never looks. Brightspace's media player
+// (d2l-labs-media-player) is one such component, so walk into every open
+// shadow root as well.
+function findMedia(root, out = []) {
+  out.push(...root.querySelectorAll('video, audio'));
+  for (const host of root.querySelectorAll('*')) {
+    if (host.shadowRoot) findMedia(host.shadowRoot, out);
+  }
+  return out;
+}
+
 function collect() {
-  const els = [...document.querySelectorAll('video, audio')];
+  const els = findMedia(document);
   // Biggest first: on a page of thumbnails, the one being watched is the big one.
   return els
     .map(describe)
@@ -130,9 +142,14 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // Report what is already in the DOM, then again as players swap sources in.
+// Only send when something changed, so the periodic rescan below stays quiet.
+let lastReport = '';
 function report() {
   const videos = collect();
   if (!videos.length) return;
+  const sig = JSON.stringify(videos.map((v) => [v.url, v.width, v.height, v.duration]));
+  if (sig === lastReport) return;
+  lastReport = sig;
   api.runtime.sendMessage({ type: 'domFound', videos }).catch(() => {});
 }
 
@@ -161,3 +178,10 @@ new MutationObserver((records) => {
 
 // currentSrc is often empty until playback starts, so catch it when it fills in.
 document.addEventListener('loadedmetadata', scheduleReport, true);
+
+// Neither the mutation observer nor loadedmetadata (not a composed event) sees
+// inside a shadow root, so a slow rescan is the only reliable way to notice a
+// player that lives in one. report() is a no-op when nothing has changed.
+setInterval(() => {
+  if (!document.hidden) report();
+}, 2500);
