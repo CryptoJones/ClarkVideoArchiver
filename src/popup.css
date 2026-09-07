@@ -150,6 +150,28 @@ footer {
 
 .toggle { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 
+.pref {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.pref > span { font-weight: 600; }
+
+.pref select {
+  font: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--chip);
+  color: var(--fg);
+}
+
 .status { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
 .status.error { color: var(--accent); }

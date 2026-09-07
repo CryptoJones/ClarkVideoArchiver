@@ -74,19 +74,36 @@ Small enough to drive by hand, so the extension is not the only possible client.
 
 ```
 GET  /api/health              -> {ok, service, version, capabilities}
-POST /api/jobs                <- {url, format: "video"|"audio", title, referer}
+POST /api/jobs                <- {url, format: "video"|"audio", quality, title,
+                                  referer, subtitles}
                               -> 201 {id, state}
-GET  /api/jobs/<id>           -> {id, state, progress, message, filename, size, download_url}
+GET  /api/jobs/<id>           -> {id, state, quality, progress, message, filename,
+                                  size, download_url}
 GET  /api/files/<id>/<name>   -> the finished file
 ```
 
 `state` is one of `queued`, `running`, `done`, `error`. Poll the job until it
 leaves a running state, then fetch `download_url`.
 
+`quality` is `"best"` (the default), `"worst"`, or a height ceiling as a string
+— `"1080"`, `"720"`, `"480"`. Anything else is read as `"best"`, so a client
+that gets the field wrong loses the preference, not the download.
+
+How it is applied depends on which tool handles the URL:
+
+- **ffmpeg** (direct media and manifests) — each variant of an HLS master
+  playlist is a program, so `ffprobe -show_programs` finds the one at the right
+  height and `-map 0:p:<id>` takes it, along with the audio rendition that
+  belongs to it. Skipped entirely for `"best"`, which is ffmpeg's own default.
+- **yt-dlp** (page URLs) — becomes an `-f` selector.
+
+A ceiling nothing satisfies falls back to the *smallest* variant on offer, not
+the largest: someone who capped the height wanted a smaller file.
+
 ```bash
 curl -X POST http://127.0.0.1:8788/api/jobs \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com/stream.m3u8","format":"video","title":"My Clip"}'
+  -d '{"url":"https://example.com/stream.m3u8","format":"video","quality":"720","title":"My Clip"}'
 
 curl http://127.0.0.1:8788/api/jobs/<id>
 ```

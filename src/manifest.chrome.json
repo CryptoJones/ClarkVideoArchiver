@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Clark Video Archiver",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Right-click any video on any page and save it to your hard drive.",
   "permissions": [
     "contextMenus",

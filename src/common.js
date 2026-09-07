@@ -77,6 +77,71 @@ function humanSize(bytes) {
   return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
 }
 
+/* --------------------------------- quality -------------------------------- */
+
+// What the user wants when a stream offers the same video at several sizes.
+// 'ask' shows the picker; 'best'/'worst' take an extreme; a bare number is a
+// height ceiling. The ceiling is a ceiling, not a demand: a stream that tops
+// out at 480p still downloads when 1080p was asked for.
+const QUALITY_CHOICES = [
+  { value: 'ask', label: 'Ask each time' },
+  { value: 'best', label: 'Best available' },
+  { value: '2160', label: '2160p (4K) or lower' },
+  { value: '1440', label: '1440p or lower' },
+  { value: '1080', label: '1080p or lower' },
+  { value: '720', label: '720p or lower' },
+  { value: '480', label: '480p or lower' },
+  { value: '360', label: '360p or lower' },
+  { value: 'worst', label: 'Smallest file' },
+];
+
+const DEFAULT_QUALITY = 'ask';
+
+// The whole string has to be digits: parseInt('4k') is 4, which would quietly
+// turn a typo into a 4-pixel-tall ceiling.
+const QUALITY_HEIGHT = /^\d{2,5}$/;
+
+function normalizeQuality(value) {
+  const v = String(value ?? '').trim().toLowerCase();
+  if (v === 'ask' || v === 'best' || v === 'worst') return v;
+  return QUALITY_HEIGHT.test(v) ? String(parseInt(v, 10)) : DEFAULT_QUALITY;
+}
+
+// 0 when the preference is not a height ceiling.
+function maxHeightFor(quality) {
+  const n = parseInt(normalizeQuality(quality), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function qualityLabel(quality) {
+  const q = normalizeQuality(quality);
+  return QUALITY_CHOICES.find((c) => c.value === q)?.label || `${q}p or lower`;
+}
+
+// Choose one variant out of a master playlist's list. Never returns null for a
+// non-empty list: a preference nothing satisfies falls back to the nearest
+// thing on offer, because handing back "no match" would mean no download.
+function pickVariant(variants, quality) {
+  const list = (variants || []).filter(Boolean);
+  if (!list.length) return null;
+
+  // parseMaster already sorts best-first, but sorting here keeps this usable
+  // on any list a caller hands over.
+  const sorted = [...list].sort(
+    (a, b) => (b.height || 0) - (a.height || 0) || (b.bandwidth || 0) - (a.bandwidth || 0),
+  );
+
+  const q = normalizeQuality(quality);
+  if (q === 'worst') return sorted[sorted.length - 1];
+  if (q === 'best' || q === 'ask') return sorted[0];
+
+  const cap = maxHeightFor(q);
+  // A variant with no RESOLUTION cannot be judged against a height ceiling, so
+  // it is only reached when nothing that carries one qualifies.
+  const known = sorted.filter((v) => v.height > 0);
+  return known.find((v) => v.height <= cap) || known[known.length - 1] || sorted[0];
+}
+
 // Manifests need remuxing rather than a plain download; give the user a command
 // they can paste instead of pretending we saved a playable file.
 function ffmpegCommand(url, filename) {
@@ -91,6 +156,12 @@ globalThis.CVA = {
   buildFilename,
   humanSize,
   ffmpegCommand,
+  QUALITY_CHOICES,
+  DEFAULT_QUALITY,
+  normalizeQuality,
+  maxHeightFor,
+  qualityLabel,
+  pickVariant,
   MEDIA_EXT,
   MANIFEST_EXT,
 };

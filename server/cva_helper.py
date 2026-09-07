@@ -43,6 +43,8 @@ SERVICE = "cva-helper"
 MAX_BODY = 64 * 1024
 JOB_RETENTION_SECONDS = 6 * 60 * 60
 
+QUALITY_HEIGHT = re.compile(r"^\d{2,5}$")
+
 MEDIA_EXT = re.compile(r"\.(mp4|m4v|webm|mkv|mov|ts|m4s|mp3|m4a|aac|ogg|ogv)(?=$|[?#])", re.I)
 MANIFEST_EXT = re.compile(r"\.(m3u8|mpd)(?=$|[?#])", re.I)
 
@@ -55,6 +57,7 @@ class Job:
     id: str
     url: str
     fmt: str
+    quality: str
     title: str
     referer: str
     subtitles: bool
@@ -71,6 +74,7 @@ class Job:
         return {
             "id": self.id,
             "state": self.state,
+            "quality": self.quality,
             "progress": round(self.progress, 1),
             "message": self.message,
             "filename": name,
@@ -94,6 +98,79 @@ def sanitize(name: str, fallback: str = "video") -> str:
 
 def have(binary: str) -> bool:
     return shutil.which(binary) is not None
+
+
+def normalise_quality(value: Any) -> str:
+    """"best", "worst", or a height ceiling as a decimal string.
+
+    Anything unrecognised becomes "best". A preference the client got wrong
+    should cost the user the preference, not the download."""
+    v = str(value or "").strip().lower()
+    if v in {"best", "worst"}:
+        return v
+    return v if QUALITY_HEIGHT.match(v) else "best"
+
+
+def ytdlp_format(quality: str) -> str:
+    """yt-dlp does its own format selection; this only tells it the ceiling."""
+    if quality == "worst":
+        return "wv*+wa/w"
+    if quality == "best":
+        return "bv*+ba/b"
+    # "<=?" keeps formats whose height yt-dlp could not determine. The trailing
+    # worst-selector means a source with nothing that small still downloads
+    # rather than erroring out with "requested format not available" — and it
+    # falls back DOWN to the smallest, not up to the largest, because someone
+    # who capped the height wanted a smaller file, not the biggest one going.
+    return f"bv*[height<=?{quality}]+ba/b[height<=?{quality}]/wv*+wa/w"
+
+
+def hls_variants(url: str, referer: str = "") -> list[tuple[int, int]]:
+    """(program_id, height) per variant, tallest first.
+
+    ffmpeg exposes each variant of a master playlist as a program, so quality
+    selection is one -map away — but only once we know which program is which
+    size. Empty for a media playlist or a plain file, where there is no
+    choice to make."""
+    cmd = ["ffprobe", "-v", "error"]
+    if referer:
+        cmd += ["-headers", f"Referer: {referer}\r\n"]
+    cmd += ["-show_programs", "-of", "json", url]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        data = json.loads(res.stdout or "{}")
+    except (json.JSONDecodeError, subprocess.SubprocessError):
+        return []
+
+    found: list[tuple[int, int]] = []
+    for prog in data.get("programs") or []:
+        pid = prog.get("program_id")
+        if pid is None:
+            continue
+        heights = [int(st["height"]) for st in prog.get("streams") or [] if st.get("height")]
+        found.append((int(pid), max(heights) if heights else 0))
+    found.sort(key=lambda pair: pair[1], reverse=True)
+    return found
+
+
+def pick_program(variants: list[tuple[int, int]], quality: str) -> int | None:
+    """Mirrors pickVariant() in src/common.js: the ceiling falls back to the
+    nearest thing on offer instead of refusing."""
+    if not variants:
+        return None
+    if quality == "worst":
+        return variants[-1][0]
+    if quality == "best":
+        return variants[0][0]
+
+    cap = int(quality)
+    # A variant with no resolution cannot be measured against the ceiling, so
+    # it is only reached when nothing that carries one qualifies.
+    known = [v for v in variants if v[1] > 0]
+    for pid, height in known:
+        if height <= cap:
+            return pid
+    return known[-1][0] if known else variants[0][0]
 
 
 def probe_duration(url: str, referer: str = "") -> float:
@@ -129,6 +206,17 @@ def run_ffmpeg(job: Job) -> Path:
     if job.referer:
         cmd += ["-headers", f"Referer: {job.referer}\r\n"]
     cmd += ["-i", job.url]
+
+    # Only probed when a ceiling was actually asked for: "best" is ffmpeg's own
+    # default stream selection, and re-deriving it would only add a round trip.
+    map_args: list[str] = []
+    if job.fmt == "video" and job.quality != "best":
+        program = pick_program(hls_variants(job.url, job.referer), job.quality)
+        if program is not None:
+            # One -map per program takes the variant's audio rendition with it.
+            map_args = ["-map", f"0:p:{program}"]
+    cmd += map_args
+
     if job.fmt == "audio":
         cmd += ["-vn", "-c:a", "libmp3lame", "-q:a", "2"]
     else:
@@ -155,16 +243,16 @@ def run_ffmpeg(job: Job) -> Path:
         err = (proc.stderr.read() if proc.stderr else "") or "ffmpeg failed"
         # aac_adtstoasc is only valid for AAC in TS; retry without it.
         if "aac_adtstoasc" in err:
-            return run_ffmpeg_plain(job, out)
+            return run_ffmpeg_plain(job, out, map_args)
         raise RuntimeError(err.strip()[:500])
     return out
 
 
-def run_ffmpeg_plain(job: Job, out: Path) -> Path:
+def run_ffmpeg_plain(job: Job, out: Path, map_args: list[str] | None = None) -> Path:
     cmd = ["ffmpeg", "-y", "-loglevel", "error"]
     if job.referer:
         cmd += ["-headers", f"Referer: {job.referer}\r\n"]
-    cmd += ["-i", job.url, "-c", "copy", str(out)]
+    cmd += ["-i", job.url, *(map_args or []), "-c", "copy", str(out)]
     res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if res.returncode != 0:
         raise RuntimeError((res.stderr or "ffmpeg failed").strip()[:500])
@@ -182,7 +270,7 @@ def run_ytdlp(job: Job) -> Path:
     if job.fmt == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
     else:
-        cmd += ["-f", "bv*+ba/b", "--merge-output-format", "mp4"]
+        cmd += ["-f", ytdlp_format(job.quality), "--merge-output-format", "mp4"]
         if job.subtitles:
             # Embedded rather than sidecar: the job API returns one file.
             cmd += ["--embed-subs", "--sub-langs", "all", "--write-auto-subs"]
@@ -312,6 +400,9 @@ class Handler(BaseHTTPRequestHandler):
                     "audio": have("ffmpeg"),
                     "hls": have("ffmpeg"),
                     "sites": have("yt-dlp"),
+                    # Picking an HLS variant means reading the master playlist's
+                    # programs first, which is ffprobe's job.
+                    "quality": have("ffprobe"),
                 },
             })
             return
@@ -363,6 +454,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         fmt = "audio" if str(payload.get("format", "")).lower() == "audio" else "video"
+        quality = normalise_quality(payload.get("quality"))
         if not have("ffmpeg"):
             self._fail(HTTPStatus.SERVICE_UNAVAILABLE, "ffmpeg is not installed on the server")
             return
@@ -373,6 +465,7 @@ class Handler(BaseHTTPRequestHandler):
             id=job_id,
             url=url,
             fmt=fmt,
+            quality=quality,
             title=sanitize(str(payload.get("title", "")), "video"),
             referer=str(payload.get("referer", "")).strip(),
             subtitles=bool(payload.get("subtitles", False)),
