@@ -126,6 +126,14 @@ api.webRequest.onHeadersReceived.addListener(
     if (isSegment) return;
     if (kind === 'file' && size && size < 128 * 1024) return;
 
+    // Streaming players ship tiny UI sound effects — YouTube serves its "no
+    // voice input" and "error" chimes from /s/*/audio/*.mp3, sized in single-
+    // digit KB and often with no Content-Length, so the size guard above misses
+    // them. They are not page content, and surfacing them as saveable media is
+    // actively misleading (they crowd out the real video, which has no file at
+    // all). Drop these known non-content pings.
+    if (/\/s\/[^?#]*\/audio\/[^?#]*\.mp3(?=$|[?#])/i.test(url)) return;
+
     recordDetection(tabId, { url, kind, mimeType, size, source: 'network' });
   },
   { urls: ['<all_urls>'], types: ['media', 'xmlhttprequest', 'other'] },

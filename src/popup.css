@@ -193,3 +193,19 @@ footer {
 }
 
 .ffmpeg-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.page-grab {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--chip);
+}
+
+.page-grab-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.page-grab .hint { padding: 0; margin: 4px 0 8px; }
+
+.page-grab-actions { display: flex; gap: 6px; flex-wrap: wrap; }

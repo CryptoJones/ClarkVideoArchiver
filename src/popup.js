@@ -9,6 +9,11 @@ const qualityEl = document.getElementById('quality');
 const qualityNoteEl = document.getElementById('quality-note');
 const runFfmpegEl = document.getElementById('run-ffmpeg');
 const ffmpegStatusEl = document.getElementById('ffmpeg-status');
+const pageGrabEl = document.getElementById('page-grab');
+const pageGrabHintEl = document.getElementById('page-grab-hint');
+const pageGrabStatusEl = document.getElementById('page-grab-status');
+const grabVideoEl = document.getElementById('grab-video');
+const grabAudioEl = document.getElementById('grab-audio');
 
 let currentTab = null;
 let helperEnabled = false;
@@ -239,6 +244,62 @@ function merge(detections, dom) {
   return items.sort((a, b) => (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2) || (b.size || 0) - (a.size || 0));
 }
 
+/* ------------------------------ page grab -------------------------------- */
+
+// Streaming sites (YouTube, Vimeo, …) never expose a single file: the <video>
+// is MediaSource-backed and the bytes arrive as separate DASH audio and video.
+// The only reliable route is to hand the page's own URL to the helper, which
+// runs yt-dlp to resolve, download and mux it into one MP4. This is that entry
+// point — the per-row "Helper" buttons only ever see the sniffed decoys.
+function isGrabbablePage(url) {
+  return /^https?:\/\//i.test(url || '');
+}
+
+async function grabPage(format) {
+  if (!helperEnabled) {
+    api.tabs.create({ url: api.runtime.getURL('options.html?tab=helper') });
+    window.close();
+    return;
+  }
+  grabVideoEl.disabled = true;
+  grabAudioEl.disabled = true;
+  pageGrabStatusEl.className = 'status';
+  pageGrabStatusEl.textContent = 'Opening the download page...';
+  const res = await api.runtime
+    .sendMessage({
+      type: 'sendToHelper',
+      url: currentTab.url,
+      pageTitle: currentTab.title,
+      tabId: currentTab.id,
+      format,
+    })
+    .catch((e) => ({ ok: false, error: String(e) }));
+  if (res?.ok) {
+    window.close();
+  } else {
+    pageGrabStatusEl.className = 'status error';
+    pageGrabStatusEl.textContent = res?.error || 'Failed.';
+    grabVideoEl.disabled = false;
+    grabAudioEl.disabled = false;
+  }
+}
+
+grabVideoEl.addEventListener('click', () => grabPage('video'));
+grabAudioEl.addEventListener('click', () => grabPage('audio'));
+
+function syncPageGrab() {
+  if (!currentTab || !isGrabbablePage(currentTab.url)) {
+    pageGrabEl.hidden = true;
+    return;
+  }
+  pageGrabEl.hidden = false;
+  pageGrabHintEl.textContent = helperEnabled
+    ? 'Grabs the whole video straight from this page with yt-dlp, muxing audio and video into one MP4. Best for YouTube and other streaming sites.'
+    : 'Streaming sites like YouTube have no single file to save. Set up the one-time local helper and this button downloads the full video.';
+  grabVideoEl.textContent = helperEnabled ? 'Download this video' : 'Set up to download';
+  grabAudioEl.hidden = !helperEnabled;
+}
+
 async function load() {
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   currentTab = tab;
@@ -249,6 +310,7 @@ async function load() {
   saveSubsEl.checked = saveSubtitles;
   qualityEl.value = CVA.normalizeQuality(quality ?? CVA.DEFAULT_QUALITY);
   helperEnabled = Boolean(helper?.enabled && helper?.endpoint);
+  syncPageGrab();
 
   const state = await api.runtime.sendMessage({ type: 'getState', tabId: tab.id })
     .catch(() => ({ detections: [], dom: [] }));
