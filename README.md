@@ -77,8 +77,20 @@ usually nothing else to do. If the extension finds nothing on any site, check
 `about:addons` → the extension → **Permissions and data** → **Access your data
 for all websites**.
 
-A temporary add-on is removed when Firefox restarts; for a permanent install the
-zip needs signing through [addons.mozilla.org](https://addons.mozilla.org/developers/).
+A temporary add-on is removed when Firefox restarts. Release and Beta Firefox
+refuse an unsigned `.xpi` ("This add-on could not be installed because it has not
+been verified"), and `xpinstall.signatures.required` is ignored there — so for a
+permanent install, either use Developer Edition / ESR (set that pref to `false`
+in `about:config`, then install the `.xpi`), or sign it:
+
+```bash
+export AMO_JWT_ISSUER=user:12345:67          # addons.mozilla.org -> Manage API Keys
+export AMO_JWT_SECRET=abcdef0123456789...
+./scripts/sign.sh                            # unlisted; signed .xpi lands in dist/
+```
+
+Every re-sign needs a new `version` in `src/manifest.firefox.json`. See
+[`scripts/sign.sh`](scripts/sign.sh) for details.
 
 ### Chrome
 
@@ -253,6 +265,18 @@ progress page that submits the job, polls it, and saves the finished file.
 
 The service needs Python 3.9+ and ffmpeg, plus yt-dlp for page URLs. Full
 documentation, API and security notes: [`server/README.md`](server/README.md).
+
+To keep it running across logins, install the bundled systemd user unit:
+
+```bash
+cp server/cva-helper.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now cva-helper.service   # starts on login, restarts on failure
+```
+
+Edit the `ExecStart` path in the unit if you cloned the repo somewhere other
+than `~/source/repos/ClarkVideoArchiver`. For a headless box with no graphical
+session, run `sudo loginctl enable-linger "$USER"` once so it starts at boot.
 
 ### Any backend, not just this one
 
