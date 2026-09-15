@@ -1,0 +1,25 @@
+[Unit]
+Description=Clark Video Archiver helper service (yt-dlp/ffmpeg backend)
+Documentation=https://github.com/CryptoJones/ClarkVideoArchiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# yt-dlp lives in ~/.local/bin; the server invokes it and ffmpeg by name.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# YouTube needs a JS runtime + the viewer's cookies (see run_ytdlp).
+Environment=CVA_YTDLP_JS_RUNTIME=node
+Environment=CVA_YTDLP_COOKIES_FROM_BROWSER=firefox
+# Adjust the path below if you cloned the repo elsewhere.
+ExecStart=/usr/bin/python3 %h/source/repos/ClarkVideoArchiver/server/cva_helper.py
+Restart=on-failure
+RestartSec=3
+# Bound to loopback by the server itself; keep it out of the wider FS anyway.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=%h/Downloads %t
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

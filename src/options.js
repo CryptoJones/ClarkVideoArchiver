@@ -124,7 +124,13 @@ els.test.addEventListener('click', async () => {
     const caps = Object.entries(health.capabilities || {})
       .map(([k, v]) => `${k}: ${v ? 'yes' : 'no'}`)
       .join(', ');
-    notify(`Connected — ${health.info}${caps ? ` (${caps})` : ''}`, 'info');
+    // A successful test is what "set up the helper" means to a user, so persist
+    // it — and turn it on — rather than leaving them to hunt for a Save button.
+    // Otherwise "Connected" shows but the popup never sees an enabled helper.
+    els.enabled.checked = true;
+    syncEnabled();
+    await api.storage.local.set({ helper: { ...currentConfig(), enabled: true } });
+    notify(`Connected and enabled — ${health.info}${caps ? ` (${caps})` : ''}. Reopen the popup to use it.`, 'info');
   } catch (err) {
     // A blocked fetch and a stopped service look identical from here, so say so
     // rather than asserting which one it was.

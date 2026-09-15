@@ -267,6 +267,18 @@ def run_ytdlp(job: Job) -> Path:
     ffmpeg present, muxes separate audio and video streams back together."""
     template = str(job.out_dir / "%(title).120s.%(ext)s")
     cmd = ["yt-dlp", "--no-playlist", "--newline", "--no-color", "-o", template]
+    # YouTube now needs a JavaScript runtime to solve its signature challenge,
+    # and typically the viewer's own browser cookies to avoid an HTTP 403 on the
+    # media data. Both are opt-in via the environment so the server stays
+    # portable — nothing here is wired to a single machine or browser.
+    #   CVA_YTDLP_JS_RUNTIME=node           (or deno, bun, ...)
+    #   CVA_YTDLP_COOKIES_FROM_BROWSER=firefox
+    js_runtime = os.environ.get("CVA_YTDLP_JS_RUNTIME", "").strip()
+    if js_runtime:
+        cmd += ["--js-runtimes", js_runtime]
+    cookies_browser = os.environ.get("CVA_YTDLP_COOKIES_FROM_BROWSER", "").strip()
+    if cookies_browser:
+        cmd += ["--cookies-from-browser", cookies_browser]
     if job.fmt == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
     else:

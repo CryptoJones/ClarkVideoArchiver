@@ -11,6 +11,16 @@
       <button id="refresh" type="button" title="Rescan this tab">Rescan</button>
     </header>
 
+    <section id="page-grab" class="page-grab" hidden>
+      <p class="page-grab-title">This page</p>
+      <p class="hint" id="page-grab-hint"></p>
+      <div class="page-grab-actions">
+        <button id="grab-video" type="button" class="primary">Download this video</button>
+        <button id="grab-audio" type="button">Audio only</button>
+      </div>
+      <p class="status" id="page-grab-status"></p>
+    </section>
+
     <div id="list" class="list" aria-live="polite">
       <p class="empty">Scanning this tab&hellip;</p>
     </div>
