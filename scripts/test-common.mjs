@@ -84,6 +84,30 @@ test('never escapes the download folder', () => {
   assert.ok(!name.includes('..'), name);
 });
 
+console.log('resolveDownloadName');
+test('resolves a default into the download folder', () => {
+  const resolved = CVA.resolveDownloadName({ name: 'Cat Video.mp4', fallback: 'Cat Video.mp4', extension: 'mp4' });
+  assert.equal(resolved.base, 'ClarkVideoArchiver/Cat Video');
+  assert.equal(resolved.path, 'ClarkVideoArchiver/Cat Video.mp4');
+});
+test('keeps dotted titles while adding the real extension', () => {
+  assert.equal(
+    CVA.resolveDownloadName({ name: 'Episode 1.2', fallback: 'Episode 1.2.mp4', extension: 'mp4' }).path,
+    'ClarkVideoArchiver/Episode 1.2.mp4',
+  );
+});
+test('replaces a mismatched media extension', () => {
+  assert.equal(
+    CVA.resolveDownloadName({ name: 'Movie.mkv', fallback: 'Movie.mp4', extension: 'mp4' }).path,
+    'ClarkVideoArchiver/Movie.mp4',
+  );
+});
+test('sanitizes traversal and keeps sidecars co-located', () => {
+  const resolved = CVA.resolveDownloadName({ name: '../../Movie', fallback: 'Movie.mp4', extension: 'mp4' });
+  assert.equal(resolved.base, 'ClarkVideoArchiver/Movie');
+  assert.equal(resolved.path, 'ClarkVideoArchiver/Movie.mp4');
+});
+
 console.log('humanSize');
 test('formats bytes', () => assert.equal(CVA.humanSize(512), '512 B'));
 test('formats megabytes', () => assert.equal(CVA.humanSize(5 * 1024 * 1024), '5.0 MB'));

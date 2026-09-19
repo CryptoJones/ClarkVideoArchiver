@@ -5,6 +5,7 @@ globalThis.api = globalThis.browser?.runtime?.id ? globalThis.browser : globalTh
 
 const MEDIA_EXT = /\.(mp4|m4v|webm|ogv|ogg|mov|mkv|avi|flv|m4s|ts|mp3|m4a)(?=$|[?#])/i;
 const MANIFEST_EXT = /\.(m3u8|mpd)(?=$|[?#])/i;
+const FILENAME_EXT = /\.(mp4|m4v|webm|ogv|ogg|mov|mkv|avi|flv|m4s|ts|mp3|m4a|aac|opus|flac|wav)$/i;
 
 // A manifest is a playlist of segments, not a playable file, so it can never be
 // written straight to disk. We still surface it — ffmpeg can mux it.
@@ -65,6 +66,21 @@ function buildFilename({ pageTitle, url, mimeType, index }) {
   }
   const suffix = index ? ` (${index})` : '';
   return `ClarkVideoArchiver/${base}${suffix}.${ext}`;
+}
+
+// Resolve the editable leaf name once, then reuse its folder-qualified path
+// and base for the video and any sidecar files. The media extension belongs to
+// the bytes we are saving, so a user-supplied known media extension is replaced
+// when it does not match the actual container; ordinary dotted titles are kept.
+function resolveDownloadName({ name, fallback, extension }) {
+  const ext = String(extension || 'mp4').replace(/^\.+/, '').toLowerCase();
+  const fallbackLeaf = String(fallback || '').split('/').pop() || 'video';
+  const safe = sanitizeFilename(name, sanitizeFilename(fallbackLeaf, 'video'));
+  const base = sanitizeFilename(safe.replace(FILENAME_EXT, ''), 'video');
+  return {
+    base: `ClarkVideoArchiver/${base}`,
+    path: `ClarkVideoArchiver/${base}.${ext}`,
+  };
 }
 
 function humanSize(bytes) {
@@ -154,6 +170,7 @@ globalThis.CVA = {
   extensionFor,
   sanitizeFilename,
   buildFilename,
+  resolveDownloadName,
   humanSize,
   ffmpegCommand,
   QUALITY_CHOICES,
