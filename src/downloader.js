@@ -550,11 +550,10 @@ async function runHelper() {
 
   setStatus('Fetching the finished file...');
   const finalMatch = String(final.filename || '').match(/\.([^.]+)$/);
-  const finalExt = finalMatch?.[1]?.replace(/[^A-Za-z0-9]/g, '').toLowerCase()
-    || (format === 'audio' ? 'mp3' : 'mp4');
-  if (els.filename.value === defaultFilename) {
-    setFilenameDefault(CVA.buildFilename({ pageTitle, url: `x.${finalExt}`, mimeType: '' }));
-  }
+  const finalExt = CVA.normalizeFilenameExtension(
+    finalMatch?.[1], format === 'audio' ? 'mp3' : 'mp4',
+  );
+  setFilenameDefault(CVA.buildFilename({ pageTitle, url: `x.${finalExt}`, mimeType: '' }));
   const filename = chosenName(finalExt).path;
 
   // Route through the downloads API so it lands in the normal place and shows
@@ -589,6 +588,7 @@ async function init() {
     setStatus('Ready');
     els.start.hidden = false;
     els.start.disabled = false;
+    els.filename.disabled = false;
     els.filename.disabled = false;
     return;
   }

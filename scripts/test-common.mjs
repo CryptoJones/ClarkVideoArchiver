@@ -107,6 +107,27 @@ test('sanitizes traversal and keeps sidecars co-located', () => {
   assert.equal(resolved.base, 'ClarkVideoArchiver/Movie');
   assert.equal(resolved.path, 'ClarkVideoArchiver/Movie.mp4');
 });
+test('falls back for an empty name and invalid extension', () => {
+  assert.equal(
+    CVA.resolveDownloadName({ name: ' ', fallback: 'Fallback.mp4', extension: 'mp4/../../x' }).path,
+    'ClarkVideoArchiver/Fallback.mp4',
+  );
+});
+test('keeps the media extension after truncating a long name', () => {
+  const path = CVA.resolveDownloadName({
+    name: `${'x'.repeat(130)}.mp4`,
+    fallback: 'Fallback.mp4',
+    extension: 'mp4',
+  }).path;
+  assert.ok(path.endsWith('.mp4'), path);
+  assert.ok(path.length <= 'ClarkVideoArchiver/'.length + 120 + '.mp4'.length, path);
+});
+test('keeps unicode and normalizes a known extension', () => {
+  assert.equal(
+    CVA.resolveDownloadName({ name: 'Café Über.MKV', fallback: 'Fallback.mp4', extension: 'MP4' }).path,
+    'ClarkVideoArchiver/Café Über.mp4',
+  );
+});
 
 console.log('humanSize');
 test('formats bytes', () => assert.equal(CVA.humanSize(512), '512 B'));
