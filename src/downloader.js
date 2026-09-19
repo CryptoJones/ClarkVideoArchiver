@@ -10,6 +10,8 @@ const RETRIES = 3;
 const els = {
   status: document.getElementById('status'),
   detail: document.getElementById('detail'),
+  filenameWrap: document.getElementById('filename-wrap'),
+  filename: document.getElementById('filename'),
   variants: document.getElementById('variants'),
   variantHint: document.getElementById('variant-hint'),
   variantList: document.getElementById('variant-list'),
@@ -37,6 +39,7 @@ let plan = null;
 let subtitleTracks = [];
 // Likewise the audio rendition, when the video variant has no sound of its own.
 let audioTrack = null;
+let defaultFilename = '';
 // The saved quality preference, read once at startup. It only ever preselects:
 // the variant list stays on screen so any pick it makes can be overruled.
 let quality = CVA.DEFAULT_QUALITY;
@@ -55,6 +58,28 @@ function warn(text, kind = 'warn') {
 
 function clearWarnings() {
   els.warnings.textContent = '';
+}
+
+function leafFilename(path) {
+  return String(path || '').split('/').pop() || 'video.mp4';
+}
+
+function setFilenameDefault(path) {
+  defaultFilename = leafFilename(path);
+  els.filename.value = defaultFilename;
+  els.filenameWrap.hidden = false;
+}
+
+function selectedBase() {
+  const entered = CVA.sanitizeFilename(els.filename.value, defaultFilename);
+  return entered.replace(/\.[^.]+$/, '') || 'video';
+}
+
+function chosenFilename(ext) {
+  const fallback = defaultFilename || `video.${ext}`;
+  const entered = CVA.sanitizeFilename(els.filename.value, fallback);
+  const withExtension = /\.[A-Za-z0-9]{1,8}$/.test(entered) ? entered : `${entered}.${ext}`;
+  return `ClarkVideoArchiver/${withExtension}`;
 }
 
 async function fetchWithRetry(url, { byteRange, signal, asText = false } = {}) {
@@ -196,7 +221,7 @@ async function maybeSaveAudioTrack(signal) {
       els.counts.textContent = `audio: ${d} / ${t} segments`;
     });
 
-    const base = CVA.buildFilename({ pageTitle, url: 'x.mp4', mimeType: '' }).replace(/\.mp4$/, '');
+    const base = selectedBase();
     const filename = `${base}.audio.${container.ext}`;
     const objectUrl = URL.createObjectURL(blob);
     await api.downloads.download({ url: objectUrl, filename });
@@ -282,11 +307,7 @@ async function run() {
   const ordered = plan.initBlob ? [plan.initBlob, ...parts] : parts;
   const blob = new Blob(ordered, { type: plan.container.mime });
 
-  const filename = CVA.buildFilename({
-    pageTitle,
-    url: `x.${plan.container.ext}`,
-    mimeType: plan.container.mime,
-  });
+  const filename = chosenFilename(plan.container.ext);
 
   const objectUrl = URL.createObjectURL(blob);
   await api.downloads.download({ url: objectUrl, filename });
@@ -349,7 +370,7 @@ async function maybeSaveSubtitles(signal) {
       const lang = track.language || track.name || 'subs';
       // Same base name as the video, with the language before the extension,
       // which is what players look for when auto-loading a sidecar file.
-      const base = CVA.buildFilename({ pageTitle, url: 'x.mp4', mimeType: '' }).replace(/\.mp4$/, '');
+      const base = selectedBase();
       const blob = new Blob([body], { type: ext === 'srt' ? 'text/plain' : 'text/vtt' });
       const objectUrl = URL.createObjectURL(blob);
       await api.downloads.download({ url: objectUrl, filename: `${base}.${CVA.sanitizeFilename(lang, 'subs')}.${ext}` });
@@ -460,6 +481,11 @@ async function prepare(mediaUrl, label, audioRendition) {
     }
 
     els.detail.textContent = describePlan(plan);
+    setFilenameDefault(CVA.buildFilename({
+      pageTitle,
+      url: `x.${plan.container.ext}`,
+      mimeType: plan.container.mime,
+    }));
     setStatus('Ready');
     els.start.hidden = false;
     els.start.disabled = false;
@@ -521,11 +547,7 @@ async function runHelper() {
   if (!final.downloadUrl) throw new Error('The service finished but returned no file to download.');
 
   setStatus('Fetching the finished file...');
-  const filename = CVA.buildFilename({
-    pageTitle: final.filename ? final.filename.replace(/\.[^.]+$/, '') : pageTitle,
-    url: final.filename || playlistUrl,
-    mimeType: '',
-  });
+  const filename = chosenFilename(CVA.extensionFor(final.filename || playlistUrl, ''));
 
   // Route through the downloads API so it lands in the normal place and shows
   // up in the browser's download list like any other save.
@@ -549,6 +571,14 @@ async function init() {
 
   const stored = await api.storage.local.get('quality');
   quality = CVA.normalizeQuality(stored?.quality ?? CVA.DEFAULT_QUALITY);
+
+  if (mode === 'helper') {
+    setFilenameDefault(CVA.buildFilename({
+      pageTitle,
+      url: format === 'audio' ? 'x.mp3' : 'x.mp4',
+      mimeType: format === 'audio' ? 'audio/mpeg' : 'video/mp4',
+    }));
+  }
 
   if (mode === 'helper') {
     try {

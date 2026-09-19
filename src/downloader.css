@@ -65,6 +65,29 @@ h2 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
 
 .detail { color: var(--muted); margin: 0 0 16px; }
 
+.filename-wrap { margin: 16px 0; }
+
+.filename-wrap label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.filename-wrap input {
+  width: 100%;
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.filename-wrap input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .variants { margin: 16px 0; }
 
 .variant-list { display: grid; gap: 8px; }
