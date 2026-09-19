@@ -84,6 +84,51 @@ test('never escapes the download folder', () => {
   assert.ok(!name.includes('..'), name);
 });
 
+console.log('resolveDownloadName');
+test('resolves a default into the download folder', () => {
+  const resolved = CVA.resolveDownloadName({ name: 'Cat Video.mp4', fallback: 'Cat Video.mp4', extension: 'mp4' });
+  assert.equal(resolved.base, 'ClarkVideoArchiver/Cat Video');
+  assert.equal(resolved.path, 'ClarkVideoArchiver/Cat Video.mp4');
+});
+test('keeps dotted titles while adding the real extension', () => {
+  assert.equal(
+    CVA.resolveDownloadName({ name: 'Episode 1.2', fallback: 'Episode 1.2.mp4', extension: 'mp4' }).path,
+    'ClarkVideoArchiver/Episode 1.2.mp4',
+  );
+});
+test('replaces a mismatched media extension', () => {
+  assert.equal(
+    CVA.resolveDownloadName({ name: 'Movie.mkv', fallback: 'Movie.mp4', extension: 'mp4' }).path,
+    'ClarkVideoArchiver/Movie.mp4',
+  );
+});
+test('sanitizes traversal and keeps sidecars co-located', () => {
+  const resolved = CVA.resolveDownloadName({ name: '../../Movie', fallback: 'Movie.mp4', extension: 'mp4' });
+  assert.equal(resolved.base, 'ClarkVideoArchiver/Movie');
+  assert.equal(resolved.path, 'ClarkVideoArchiver/Movie.mp4');
+});
+test('falls back for an empty name and invalid extension', () => {
+  assert.equal(
+    CVA.resolveDownloadName({ name: ' ', fallback: 'Fallback.mp4', extension: 'mp4/../../x' }).path,
+    'ClarkVideoArchiver/Fallback.mp4',
+  );
+});
+test('keeps the media extension after truncating a long name', () => {
+  const path = CVA.resolveDownloadName({
+    name: `${'x'.repeat(130)}.mp4`,
+    fallback: 'Fallback.mp4',
+    extension: 'mp4',
+  }).path;
+  assert.ok(path.endsWith('.mp4'), path);
+  assert.ok(path.length <= 'ClarkVideoArchiver/'.length + 120 + '.mp4'.length, path);
+});
+test('keeps unicode and normalizes a known extension', () => {
+  assert.equal(
+    CVA.resolveDownloadName({ name: 'Café Über.MKV', fallback: 'Fallback.mp4', extension: 'MP4' }).path,
+    'ClarkVideoArchiver/Café Über.mp4',
+  );
+});
+
 console.log('humanSize');
 test('formats bytes', () => assert.equal(CVA.humanSize(512), '512 B'));
 test('formats megabytes', () => assert.equal(CVA.humanSize(5 * 1024 * 1024), '5.0 MB'));

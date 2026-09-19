@@ -10,6 +10,8 @@ const RETRIES = 3;
 const els = {
   status: document.getElementById('status'),
   detail: document.getElementById('detail'),
+  filenameWrap: document.getElementById('filename-wrap'),
+  filename: document.getElementById('filename'),
   variants: document.getElementById('variants'),
   variantHint: document.getElementById('variant-hint'),
   variantList: document.getElementById('variant-list'),
@@ -37,6 +39,7 @@ let plan = null;
 let subtitleTracks = [];
 // Likewise the audio rendition, when the video variant has no sound of its own.
 let audioTrack = null;
+let defaultFilename = '';
 // The saved quality preference, read once at startup. It only ever preselects:
 // the variant list stays on screen so any pick it makes can be overruled.
 let quality = CVA.DEFAULT_QUALITY;
@@ -55,6 +58,26 @@ function warn(text, kind = 'warn') {
 
 function clearWarnings() {
   els.warnings.textContent = '';
+}
+
+function leafFilename(path) {
+  return String(path || '').split('/').pop() || 'video.mp4';
+}
+
+function setFilenameDefault(path) {
+  const next = leafFilename(path);
+  const untouched = !defaultFilename || els.filename.value === defaultFilename;
+  defaultFilename = next;
+  if (untouched || !els.filename.value.trim()) els.filename.value = next;
+  els.filenameWrap.hidden = false;
+}
+
+function chosenName(ext) {
+  return CVA.resolveDownloadName({
+    name: els.filename.value,
+    fallback: defaultFilename || `video.${ext}`,
+    extension: ext,
+  });
 }
 
 async function fetchWithRetry(url, { byteRange, signal, asText = false } = {}) {
@@ -186,7 +209,7 @@ async function assembleTrack(mediaUrl, signal, onProgress) {
 
 // A browser cannot mux audio into video, so when the stream splits them the
 // honest thing is to save both and hand over the one-line join.
-async function maybeSaveAudioTrack(signal) {
+async function maybeSaveAudioTrack(signal, base) {
   if (!audioTrack?.url) return;
   try {
     setStatus('Downloading the separate audio track...');
@@ -196,7 +219,6 @@ async function maybeSaveAudioTrack(signal) {
       els.counts.textContent = `audio: ${d} / ${t} segments`;
     });
 
-    const base = CVA.buildFilename({ pageTitle, url: 'x.mp4', mimeType: '' }).replace(/\.mp4$/, '');
     const filename = `${base}.audio.${container.ext}`;
     const objectUrl = URL.createObjectURL(blob);
     await api.downloads.download({ url: objectUrl, filename });
@@ -218,7 +240,9 @@ async function run() {
   clearWarnings();
   controller = new AbortController();
   const { signal } = controller;
+  const resolved = chosenName(plan.container.ext);
   els.start.disabled = true;
+  els.filename.disabled = true;
   els.cancel.hidden = false;
   els.progressWrap.hidden = false;
   // Switching variant mid-download would append segments from a second stream
@@ -282,11 +306,7 @@ async function run() {
   const ordered = plan.initBlob ? [plan.initBlob, ...parts] : parts;
   const blob = new Blob(ordered, { type: plan.container.mime });
 
-  const filename = CVA.buildFilename({
-    pageTitle,
-    url: `x.${plan.container.ext}`,
-    mimeType: plan.container.mime,
-  });
+  const filename = resolved.path;
 
   const objectUrl = URL.createObjectURL(blob);
   await api.downloads.download({ url: objectUrl, filename });
@@ -300,8 +320,8 @@ async function run() {
     warn(`${plan.container.note}  Command: ffmpeg -i "${filename.split('/').pop()}" -c copy "output.mp4"`, 'info');
   }
 
-  await maybeSaveAudioTrack(signal);
-  await maybeSaveSubtitles(signal);
+  await maybeSaveAudioTrack(signal, resolved.base);
+  await maybeSaveSubtitles(signal, resolved.base);
 }
 
 /* ------------------------------- subtitles ------------------------------- */
@@ -323,7 +343,7 @@ async function fetchSubtitleTrack(track, signal) {
   return Subs.mergeSegments(segments);
 }
 
-async function maybeSaveSubtitles(signal) {
+async function maybeSaveSubtitles(signal, base) {
   const { saveSubtitles = false, subtitleFormat = 'vtt' } = await api.storage.local.get([
     'saveSubtitles',
     'subtitleFormat',
@@ -349,7 +369,6 @@ async function maybeSaveSubtitles(signal) {
       const lang = track.language || track.name || 'subs';
       // Same base name as the video, with the language before the extension,
       // which is what players look for when auto-loading a sidecar file.
-      const base = CVA.buildFilename({ pageTitle, url: 'x.mp4', mimeType: '' }).replace(/\.mp4$/, '');
       const blob = new Blob([body], { type: ext === 'srt' ? 'text/plain' : 'text/vtt' });
       const objectUrl = URL.createObjectURL(blob);
       await api.downloads.download({ url: objectUrl, filename: `${base}.${CVA.sanitizeFilename(lang, 'subs')}.${ext}` });
@@ -460,6 +479,11 @@ async function prepare(mediaUrl, label, audioRendition) {
     }
 
     els.detail.textContent = describePlan(plan);
+    setFilenameDefault(CVA.buildFilename({
+      pageTitle,
+      url: `x.${plan.container.ext}`,
+      mimeType: plan.container.mime,
+    }));
     setStatus('Ready');
     els.start.hidden = false;
     els.start.disabled = false;
@@ -475,10 +499,14 @@ async function prepare(mediaUrl, label, audioRendition) {
 // result. Polling lives here rather than in the background worker because a
 // long encode outlives an idle MV3 service worker.
 async function runHelper() {
+  els.start.disabled = true;
+  els.filename.disabled = true;
   const { helper: cfg } = await api.storage.local.get('helper');
   if (!cfg?.enabled || !cfg.endpoint) {
     setStatus('No helper configured', 'error');
     warn('Enable and configure a helper service in the extension settings first.', 'error');
+    els.start.disabled = false;
+    els.filename.disabled = false;
     return;
   }
 
@@ -521,11 +549,12 @@ async function runHelper() {
   if (!final.downloadUrl) throw new Error('The service finished but returned no file to download.');
 
   setStatus('Fetching the finished file...');
-  const filename = CVA.buildFilename({
-    pageTitle: final.filename ? final.filename.replace(/\.[^.]+$/, '') : pageTitle,
-    url: final.filename || playlistUrl,
-    mimeType: '',
-  });
+  const finalMatch = String(final.filename || '').match(/\.([^.]+)$/);
+  const finalExt = CVA.normalizeFilenameExtension(
+    finalMatch?.[1], format === 'audio' ? 'mp3' : 'mp4',
+  );
+  setFilenameDefault(CVA.buildFilename({ pageTitle, url: `x.${finalExt}`, mimeType: '' }));
+  const filename = chosenName(finalExt).path;
 
   // Route through the downloads API so it lands in the normal place and shows
   // up in the browser's download list like any other save.
@@ -551,14 +580,16 @@ async function init() {
   quality = CVA.normalizeQuality(stored?.quality ?? CVA.DEFAULT_QUALITY);
 
   if (mode === 'helper') {
-    try {
-      await runHelper();
-    } catch (err) {
-      const msg = String(err.message || err);
-      setStatus(msg === 'Cancelled.' ? 'Cancelled' : 'Failed', 'error');
-      if (msg !== 'Cancelled.') warn(msg, 'error');
-      els.cancel.hidden = true;
-    }
+    setFilenameDefault(CVA.buildFilename({
+      pageTitle,
+      url: format === 'audio' ? 'x.mp3' : 'x.mp4',
+      mimeType: format === 'audio' ? 'audio/mpeg' : 'video/mp4',
+    }));
+    setStatus('Ready');
+    els.start.hidden = false;
+    els.start.disabled = false;
+    els.filename.disabled = false;
+    els.filename.disabled = false;
     return;
   }
 
@@ -591,7 +622,8 @@ async function init() {
 }
 
 els.start.addEventListener('click', () => {
-  run().catch((err) => {
+  const action = mode === 'helper' ? runHelper() : run();
+  action.catch((err) => {
     setStatus(String(err.message || err) === 'Cancelled.' ? 'Cancelled' : 'Failed', 'error');
     if (String(err.message || err) !== 'Cancelled.') warn(String(err.message || err), 'error');
     els.start.disabled = false;

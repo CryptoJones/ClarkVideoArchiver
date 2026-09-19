@@ -3,8 +3,10 @@
 // promise-based there, so prefer it when it is a real extension namespace.
 globalThis.api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
-const MEDIA_EXT = /\.(mp4|m4v|webm|ogv|ogg|mov|mkv|avi|flv|m4s|ts|mp3|m4a)(?=$|[?#])/i;
+const MEDIA_EXT = /\.(mp4|m4v|webm|ogv|ogg|mov|mkv|avi|flv|m4s|ts|mp3|m4a|aac|opus|flac|wav)(?=$|[?#])/i;
 const MANIFEST_EXT = /\.(m3u8|mpd)(?=$|[?#])/i;
+const FILENAME_EXT = /\.(mp4|m4v|webm|ogv|ogg|mov|mkv|avi|flv|m4s|ts|mp3|m4a|aac|opus|flac|wav)$/i;
+const FILENAME_EXTENSIONS = new Set('mp4 m4v webm ogv ogg mov mkv avi flv m4s ts mp3 m4a aac opus flac wav'.split(' '));
 
 // A manifest is a playlist of segments, not a playable file, so it can never be
 // written straight to disk. We still surface it — ffmpeg can mux it.
@@ -31,6 +33,10 @@ function extensionFor(url, mimeType) {
     'audio/mpeg': 'mp3',
     'audio/mp4': 'm4a',
     'audio/ogg': 'ogg',
+    'audio/aac': 'aac',
+    'audio/opus': 'opus',
+    'audio/flac': 'flac',
+    'audio/wav': 'wav',
   };
   return byMime[String(mimeType).split(';')[0].trim()] || 'mp4';
 }
@@ -65,6 +71,29 @@ function buildFilename({ pageTitle, url, mimeType, index }) {
   }
   const suffix = index ? ` (${index})` : '';
   return `ClarkVideoArchiver/${base}${suffix}.${ext}`;
+}
+
+// Resolve the editable leaf name once, then reuse its folder-qualified path
+// and base for the video and any sidecar files. The media extension belongs to
+// the bytes we are saving, so a user-supplied known media extension is replaced
+// when it does not match the actual container; ordinary dotted titles are kept.
+function resolveDownloadName({ name, fallback, extension }) {
+  const ext = normalizeFilenameExtension(extension);
+  const fallbackLeaf = String(fallback || '').split('/').pop() || 'video';
+  const fallbackBase = fallbackLeaf.replace(FILENAME_EXT, '');
+  const rawBase = String(name || fallbackLeaf).replace(FILENAME_EXT, '');
+  const base = sanitizeFilename(rawBase, sanitizeFilename(fallbackBase, 'video'));
+  return {
+    base: `ClarkVideoArchiver/${base}`,
+    path: `ClarkVideoArchiver/${base}.${ext}`,
+  };
+}
+
+function normalizeFilenameExtension(extension, fallback = 'mp4') {
+  const requested = String(extension || '').replace(/^\.+/, '').toLowerCase();
+  if (FILENAME_EXTENSIONS.has(requested)) return requested;
+  const safeFallback = String(fallback || 'mp4').replace(/^\.+/, '').toLowerCase();
+  return FILENAME_EXTENSIONS.has(safeFallback) ? safeFallback : 'mp4';
 }
 
 function humanSize(bytes) {
@@ -154,6 +183,8 @@ globalThis.CVA = {
   extensionFor,
   sanitizeFilename,
   buildFilename,
+  resolveDownloadName,
+  normalizeFilenameExtension,
   humanSize,
   ffmpegCommand,
   QUALITY_CHOICES,
