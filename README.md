@@ -257,6 +257,7 @@ it, and no URL leaves your machine unless you press the Helper button.
 
 ```bash
 ./server/cva_helper.py          # listens on 127.0.0.1:8788
+python server\cva_helper.py     # the same, on Windows
 ```
 
 Then **toolbar button → Helper service settings**, tick *Enable*, press **Test
@@ -277,6 +278,18 @@ systemctl --user enable --now cva-helper.service   # starts on login, restarts o
 Edit the `ExecStart` path in the unit if you cloned the repo somewhere other
 than `~/source/repos/ClarkVideoArchiver`. For a headless box with no graphical
 session, run `sudo loginctl enable-linger "$USER"` once so it starts at boot.
+
+On **Windows** there is no systemd; a per-user Scheduled Task does the same job
+(start at logon, restart on failure, no administrator rights):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File server\install-windows.ps1              # install and start
+powershell -ExecutionPolicy Bypass -File server\install-windows.ps1 -Uninstall   # remove
+```
+
+Prerequisites (Python 3.9+, ffmpeg and yt-dlp on `PATH`), how to run it by
+hand, where the log goes and how to configure it are in
+[`server/README.md`](server/README.md#windows).
 
 ### Any backend, not just this one
 
@@ -315,7 +328,7 @@ Also available in the extension under **Setup guide → Troubleshooting**.
 | Got a `.ts` file, not `.mp4` | The stream used MPEG-TS segments. That file is valid and plays in VLC or mpv. For MP4, use the helper service or convert: `ffmpeg -i in.ts -c copy out.mp4` |
 | The video has no sound | That stream splits audio into its own track. The audio is saved alongside as `<name>.audio.<ext>`; join them with `ffmpeg -i video -i audio -c copy out.mp4` |
 | Netflix, Disney+ and similar | DRM. The decrypted video never exists anywhere an extension can reach, so no extension can save them. Not fixable. |
-| Helper "Test connection" fails | Check the helper terminal is still running and the port matches what it printed. If started with `--token`, the same token must be entered in settings. |
+| Helper "Test connection" fails | Check the helper terminal is still running and the port matches what it printed. If started with `--token`, the same token must be entered in settings. On Windows with the Scheduled Task, check `Get-ScheduledTask -TaskName ClarkVideoArchiverHelper` and the log in `%LOCALAPPDATA%\ClarkVideoArchiver\`. |
 | A download stopped partway | Closing the build tab cancels it. Leave it open until it reports Saved. |
 
 ## Development

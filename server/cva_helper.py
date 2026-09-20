@@ -11,12 +11,14 @@ Standard library only — no pip install needed for the server itself.
 
     ./cva_helper.py                       # listens on 127.0.0.1:8788
     ./cva_helper.py --port 9000 --token s3cret
+    python cva_helper.py                  # Windows (or anywhere without a shebang)
 
 Binds to loopback by default. It executes ffmpeg/yt-dlp on URLs it is given,
 so do not expose it to a network you do not control; --host is deliberately
 explicit about that.
 
-Tested on Linux and macOS.
+Tested on Linux, macOS and Windows. ffmpeg, ffprobe and yt-dlp are found on
+PATH by name, so on Windows they need only be installed somewhere PATH covers.
 """
 from __future__ import annotations
 
@@ -30,13 +32,14 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 VERSION = "1"
 SERVICE = "cva-helper"
@@ -50,6 +53,13 @@ MANIFEST_EXT = re.compile(r"\.(m3u8|mpd)(?=$|[?#])", re.I)
 
 JOBS: dict[str, "Job"] = {}
 JOBS_LOCK = threading.Lock()
+
+# How child output is decoded. ffmpeg and ffprobe always write UTF-8, and
+# yt-dlp is asked to (see run_ytdlp). Leaving `text=True` to the locale would
+# mean cp1252 on Windows, where a title with one character outside that code
+# page raises UnicodeDecodeError in the progress loop and fails the job.
+# `errors="replace"` keeps a stray byte cosmetic rather than fatal anywhere.
+TEXT = {"text": True, "encoding": "utf-8", "errors": "replace"}
 
 
 @dataclass
@@ -137,7 +147,7 @@ def hls_variants(url: str, referer: str = "") -> list[tuple[int, int]]:
         cmd += ["-headers", f"Referer: {referer}\r\n"]
     cmd += ["-show_programs", "-of", "json", url]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        res = subprocess.run(cmd, capture_output=True, timeout=120, check=False, **TEXT)
         data = json.loads(res.stdout or "{}")
     except (json.JSONDecodeError, subprocess.SubprocessError):
         return []
@@ -180,7 +190,7 @@ def probe_duration(url: str, referer: str = "") -> float:
         cmd += ["-headers", f"Referer: {referer}\r\n"]
     cmd += ["-show_entries", "format=duration", "-of", "csv=p=0", url]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+        out = subprocess.run(cmd, capture_output=True, timeout=60, check=False, **TEXT)
         return float((out.stdout or "").strip() or 0)
     except (ValueError, subprocess.SubprocessError):
         return 0.0
@@ -228,7 +238,7 @@ def run_ffmpeg(job: Job) -> Path:
             cmd += ["-c:s", "mov_text"]
     cmd += ["-progress", "pipe:1", "-nostats", str(out)]
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **TEXT)
     assert proc.stdout is not None
     for line in proc.stdout:
         if line.startswith("out_time_us=") and duration > 0:
@@ -253,7 +263,7 @@ def run_ffmpeg_plain(job: Job, out: Path, map_args: list[str] | None = None) -> 
     if job.referer:
         cmd += ["-headers", f"Referer: {job.referer}\r\n"]
     cmd += ["-i", job.url, *(map_args or []), "-c", "copy", str(out)]
-    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    res = subprocess.run(cmd, capture_output=True, check=False, **TEXT)
     if res.returncode != 0:
         raise RuntimeError((res.stderr or "ffmpeg failed").strip()[:500])
     return out
@@ -290,7 +300,11 @@ def run_ytdlp(job: Job) -> Path:
         cmd += ["--referer", job.referer]
     cmd.append(job.url)
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # yt-dlp is itself Python and writes its console in the locale's encoding,
+    # which is UTF-8 on Linux and macOS but cp1252 on Windows. Ask for UTF-8
+    # explicitly so its output matches how TEXT decodes it; harmless elsewhere.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, **TEXT)
     assert proc.stdout is not None
     tail: list[str] = []
     for line in proc.stdout:
@@ -513,10 +527,16 @@ class Handler(BaseHTTPRequestHandler):
 
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         size = target.stat().st_size
+        # HTTP headers are latin-1, so a title outside it ("✓", CJK) cannot go
+        # in filename= verbatim — send_header would raise and drop the
+        # connection. RFC 5987 filename* carries the real name percent-encoded;
+        # the plain filename= is an ASCII approximation for older clients.
+        ascii_name = unicodedata.normalize("NFKD", target.name).encode("ascii", "ignore").decode()
+        disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(target.name)}'
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(size))
-        self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
+        self.send_header("Content-Disposition", disposition)
         self._cors()
         self.end_headers()
         if self.command == "HEAD":
@@ -527,6 +547,12 @@ class Handler(BaseHTTPRequestHandler):
 
 class HelperServer(ThreadingHTTPServer):
     daemon_threads = True
+    # http.server sets SO_REUSEADDR so a restart is not blocked by TIME_WAIT
+    # connections from the previous run. On Windows the flag means something
+    # else: it lets a second listener bind on top of a live one, so two helpers
+    # would silently coexist and one of them would get no requests. Windows
+    # does not need it for the restart case either, so leave it off there.
+    allow_reuse_address = os.name != "nt"
 
     def __init__(self, addr, handler, *, output_dir: Path, token: str, verbose: bool):
         super().__init__(addr, handler)
