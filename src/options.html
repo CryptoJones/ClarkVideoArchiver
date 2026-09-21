@@ -182,12 +182,20 @@
             <h3>Install ffmpeg, and yt-dlp if you want it</h3>
             <p>
               ffmpeg is required. yt-dlp is needed only for page URLs rather than
-              direct video links. Linux or macOS, with Python 3.9 or newer.
+              direct video links. Windows, Linux or macOS, with Python 3.9 or
+              newer.
             </p>
+            <p class="hint">Windows (open a new terminal afterwards):</p>
+            <div class="cmd">
+              <code>winget install Gyan.FFmpeg yt-dlp.yt-dlp</code>
+              <button type="button" class="copy">Copy</button>
+            </div>
+            <p class="hint">Linux:</p>
             <div class="cmd">
               <code>sudo apt install ffmpeg &amp;&amp; pip install yt-dlp</code>
               <button type="button" class="copy">Copy</button>
             </div>
+            <p class="hint">macOS:</p>
             <div class="cmd">
               <code>brew install ffmpeg yt-dlp</code>
               <button type="button" class="copy">Copy</button>
@@ -195,7 +203,13 @@
           </li>
           <li>
             <h3>Start the helper</h3>
-            <p>Run this from the folder holding the extension source:</p>
+            <p>Run this from the folder holding the extension source.</p>
+            <p class="hint">Windows (PowerShell):</p>
+            <div class="cmd">
+              <code>python server\cva_helper.py</code>
+              <button type="button" class="copy">Copy</button>
+            </div>
+            <p class="hint">Linux or macOS:</p>
             <div class="cmd">
               <code>./server/cva_helper.py</code>
               <button type="button" class="copy">Copy</button>
@@ -203,6 +217,12 @@
             <p>
               It prints the address it is listening on, then keeps running. Leave
               that terminal open while you use it.
+            </p>
+            <p class="hint">
+              To have it start at every logon instead, on Windows run
+              <code>powershell -ExecutionPolicy Bypass -File server\install-windows.ps1</code>
+              (no administrator rights needed). Linux has a systemd unit; see
+              <code>server/README.md</code>.
             </p>
           </li>
           <li>
