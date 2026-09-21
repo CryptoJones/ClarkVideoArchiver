@@ -14,6 +14,25 @@ shared=(
   options.html options.js
 )
 
+# Pack a directory into a zip. Git Bash on Windows ships without `zip`, so fall
+# back to Python's zipfile. `python3` there can be the Microsoft Store stub, which
+# exists on PATH but does not run, so probe each candidate before trusting it.
+pack() {
+  local dir="$1" zipfile="$2" py
+  if command -v zip >/dev/null 2>&1; then
+    ( cd "$dir" && zip -qr "$zipfile" . )
+    return
+  fi
+  for py in python3 python py; do
+    if "$py" -c 'import zipfile' >/dev/null 2>&1; then
+      "$py" -c 'import shutil, sys; shutil.make_archive(sys.argv[2][:-4], "zip", sys.argv[1])' "$dir" "$zipfile"
+      return
+    fi
+  done
+  echo "error: need either 'zip' or a working Python to pack $zipfile" >&2
+  return 1
+}
+
 build_one() {
   local browser="$1"
   local out="$dist/$browser"
@@ -32,7 +51,7 @@ build_one() {
     cp "$root/src/sw.js" "$out/sw.js"
   fi
 
-  ( cd "$out" && zip -qr "$dist/clark-video-archiver-$browser.zip" . )
+  pack "$out" "$dist/clark-video-archiver-$browser.zip"
   echo "built  $out"
   echo "packed $dist/clark-video-archiver-$browser.zip"
 }
