@@ -89,7 +89,7 @@ class Job:
             "message": self.message,
             "filename": name,
             "size": size,
-            "download_url": f"/api/files/{self.id}/{name}" if self.state == "done" and name else "",
+            "download_url": f"/api/files/{self.id}/{quote(name)}" if self.state == "done" and name else "",
         }
 
 
