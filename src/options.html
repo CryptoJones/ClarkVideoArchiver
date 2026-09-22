@@ -8,6 +8,7 @@
       .field { display: grid; gap: 5px; margin-bottom: 16px; }
       .field label { font-weight: 600; }
       .field .hint { color: var(--muted); font-size: 12px; margin: 0; }
+      h1 #version { color: var(--muted); font-size: 13px; font-weight: 400; }
       input[type="text"], input[type="url"], input[type="password"], select {
         font: inherit;
         padding: 8px 10px;
@@ -62,7 +63,7 @@
   </head>
   <body>
     <main>
-      <h1>Clark Video Archiver</h1>
+      <h1>Clark Video Archiver <span id="version"></span></h1>
       <p class="detail">Setup and usage.</p>
 
       <nav class="tabs" role="tablist">
