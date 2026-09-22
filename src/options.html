@@ -203,26 +203,31 @@
           </li>
           <li>
             <h3>Start the helper</h3>
-            <p>Run this from the folder holding the extension source.</p>
-            <p class="hint">Windows (PowerShell):</p>
+            <p>
+              <strong>Windows:</strong> run the setup script once. It installs a
+              per-user Scheduled Task that starts the helper at logon and
+              restarts it if it fails &mdash; no administrator rights needed, and
+              nothing to leave a terminal open for.
+            </p>
             <div class="cmd">
-              <code>python server\cva_helper.py</code>
+              <code>powershell -ExecutionPolicy Bypass -File server\install-windows.ps1</code>
               <button type="button" class="copy">Copy</button>
             </div>
-            <p class="hint">Linux or macOS:</p>
+            <p>
+              <strong>Linux or macOS:</strong> run this from the folder holding
+              the extension source. It prints the address it is listening on,
+              then keeps running &mdash; leave that terminal open while you use
+              it. (A systemd user unit is also available; see
+              <code>server/README.md</code>.)
+            </p>
             <div class="cmd">
               <code>./server/cva_helper.py</code>
               <button type="button" class="copy">Copy</button>
             </div>
-            <p>
-              It prints the address it is listening on, then keeps running. Leave
-              that terminal open while you use it.
-            </p>
             <p class="hint">
-              To have it start at every logon instead, on Windows run
-              <code>powershell -ExecutionPolicy Bypass -File server\install-windows.ps1</code>
-              (no administrator rights needed). Linux has a systemd unit; see
-              <code>server/README.md</code>.
+              Prefer to run it by hand on Windows instead?
+              <code>python server\cva_helper.py</code> does the same thing in
+              the current terminal.
             </p>
           </li>
           <li>
