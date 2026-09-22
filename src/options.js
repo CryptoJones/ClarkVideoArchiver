@@ -1,5 +1,8 @@
 /* global Helper, api */
 
+const versionEl = document.getElementById('version');
+if (versionEl) versionEl.textContent = `(v${api.runtime.getManifest().version})`;
+
 /* ------------------------------ setup guide ------------------------------ */
 
 const tabs = [...document.querySelectorAll('nav.tabs button')];
