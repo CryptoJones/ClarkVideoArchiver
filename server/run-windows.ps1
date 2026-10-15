@@ -138,6 +138,18 @@ if ($Check) {
     Write-Host "python   $pyText"
     Write-Host "ffmpeg   $ffText"
     Write-Host "yt-dlp   $ytText"
+    if ($ytdlp) {
+        # Vimeo and similar sites answer 401/403 unless yt-dlp can impersonate a
+        # browser, which needs curl_cffi. The winget build bundles it; a pip
+        # install does not. A warning, not a failure: most sites work without.
+        $targets = @(& $ytdlp.Source --list-impersonate-targets 2>&1 | ForEach-Object { "$_" })
+        $usable = @($targets | Where-Object { $_ -match 'curl_cffi' -and $_ -notmatch 'unavailable' })
+        if (-not $usable.Count) {
+            Write-Host '         WARNING: no browser impersonation (curl_cffi missing); Vimeo and similar'
+            Write-Host '         sites will fail with HTTP 401/403. Fix: winget install yt-dlp.yt-dlp,'
+            Write-Host '         or pip install --upgrade "yt-dlp[default,curl-cffi]".'
+        }
+    }
     Write-Host "script   $helperScript"
     Write-Host "log      $logPath"
     if ($python -and $ffmpeg -and (Test-Path $helperScript)) { exit 0 } else { exit 1 }

@@ -264,20 +264,20 @@ Then **toolbar button → Helper service settings**, tick *Enable*, press **Test
 connection**. A **Helper** button appears beside each detected video; it opens a
 progress page that submits the job, polls it, and saves the finished file.
 
-The service needs Python 3.9+ and ffmpeg, plus yt-dlp for page URLs. Full
-documentation, API and security notes: [`server/README.md`](server/README.md).
+The service needs Python 3.9+ and ffmpeg, plus yt-dlp for page URLs. Install
+yt-dlp with `curl_cffi` — `pipx install "yt-dlp[default,curl-cffi]"` — or Vimeo
+and similar sites fail with HTTP 401
+([why](server/README.md#yt-dlp-needs-curl_cffi)). Full documentation, API and
+security notes: [`server/README.md`](server/README.md).
 
-To keep it running across logins, install the bundled systemd user unit:
+On **Linux**, the installer sets up the bundled systemd user unit (start at
+login, restart on failure) for wherever this repository is cloned:
 
 ```bash
-cp server/cva-helper.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now cva-helper.service   # starts on login, restarts on failure
+./server/install-linux.sh           # start at login
+./server/install-linux.sh --boot    # start at boot too (asks for sudo)
+./server/install-linux.sh --uninstall
 ```
-
-Edit the `ExecStart` path in the unit if you cloned the repo somewhere other
-than `~/source/repos/ClarkVideoArchiver`. For a headless box with no graphical
-session, run `sudo loginctl enable-linger "$USER"` once so it starts at boot.
 
 On **Windows** there is no systemd; a per-user Scheduled Task does the same job
 (start at logon, restart on failure, no administrator rights):
@@ -329,6 +329,8 @@ Also available in the extension under **Setup guide → Troubleshooting**.
 | The video has no sound | That stream splits audio into its own track. The audio is saved alongside as `<name>.audio.<ext>`; join them with `ffmpeg -i video -i audio -c copy out.mp4` |
 | Netflix, Disney+ and similar | DRM. The decrypted video never exists anywhere an extension can reach, so no extension can save them. Not fixable. |
 | Helper "Test connection" fails | Check the helper terminal is still running and the port matches what it printed. If started with `--token`, the same token must be entered in settings. On Windows with the Scheduled Task, check `Get-ScheduledTask -TaskName ClarkVideoArchiverHelper` and the log in `%LOCALAPPDATA%\ClarkVideoArchiver\`. |
+| Helper fails with `HTTP Error 401` and "no impersonate target is available" | yt-dlp lacks `curl_cffi`, which Vimeo and similar sites require. `pipx install --force "yt-dlp[default,curl-cffi]"`, then retry. See [`server/README.md`](server/README.md#yt-dlp-needs-curl_cffi). |
+| Helper is down after a reboot (Linux) | A user unit starts only at login unless linger is on: `./server/install-linux.sh --boot`. |
 | A download stopped partway | Closing the build tab cancels it. Leave it open until it reports Saved. |
 
 ## Development

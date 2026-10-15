@@ -15,23 +15,57 @@ You run it yourself, on your own machine. Nothing is sent anywhere else.
 
 - Python 3.9+ (standard library only — no `pip install` for the server itself)
 - `ffmpeg` on `PATH` — required
-- `yt-dlp` — optional; needed only for page URLs rather than direct media links
+- `yt-dlp` — optional; needed only for page URLs rather than direct media links.
+  Install it **with `curl_cffi`** (see [below](#yt-dlp-needs-curl_cffi)), or
+  Vimeo and similar sites fail.
 
 Tested on Linux, macOS and Windows.
 
 ```bash
 # Debian/Ubuntu
-sudo apt install ffmpeg
-pip install yt-dlp
+sudo apt install ffmpeg pipx
+pipx install "yt-dlp[default,curl-cffi]"
 
 # macOS
-brew install ffmpeg yt-dlp
+brew install ffmpeg pipx
+pipx install "yt-dlp[default,curl-cffi]"
 
 # Windows (winget; or install from python.org, ffmpeg.org and yt-dlp's releases)
 winget install Python.Python.3.13
 winget install Gyan.FFmpeg
 winget install yt-dlp.yt-dlp
 ```
+
+### yt-dlp needs `curl_cffi`
+
+Vimeo, and a growing list of other sites, refuse requests that do not look
+like they come from a real browser. yt-dlp can impersonate one, but only
+through the optional `curl_cffi` package. Without it every such job fails
+with:
+
+```
+WARNING: [vimeo] ...: The extractor is attempting impersonation, but no impersonate target is available.
+ERROR: [vimeo] ...: Unable to download webpage: HTTP Error 401: Unauthorized
+```
+
+These installs include it: `pipx install "yt-dlp[default,curl-cffi]"` (or
+`uv tool install "yt-dlp[default,curl-cffi]"`), yt-dlp's standalone release
+binaries (`yt-dlp_linux`, `yt-dlp_macos`, `yt-dlp.exe`) and the winget package.
+These do **not**: a bare `pip install yt-dlp`, the `yt-dlp` zipapp from the
+releases page (a single Python file, which cannot load extra packages), and
+most distribution packages (`apt install yt-dlp`).
+
+Check with `yt-dlp --list-impersonate-targets`: at least one row must name
+`curl_cffi` without `(unavailable)`. The helper runs the same check at
+startup and warns if it fails, and a job that fails this way leads its error
+with the fix. To repair an install that lacks it:
+
+```bash
+pipx install --force "yt-dlp[default,curl-cffi]"
+```
+
+If an older yt-dlp (the zipapp, say) sits earlier on `PATH`, remove it first
+so the new one is found.
 
 ## Run it
 
@@ -67,18 +101,38 @@ connection**. A **Helper** button appears next to each detected video.
 ### Linux (systemd)
 
 `cva-helper.service` is a systemd **user** unit: it starts the helper at login
-and restarts it three seconds after a failure.
+and restarts it three seconds after a failure. The installer sets it up:
 
 ```bash
-cp server/cva-helper.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now cva-helper.service
+./server/install-linux.sh            # start at login, restart on failure
+./server/install-linux.sh --boot     # also start at boot, before anyone logs in
+./server/install-linux.sh --uninstall
 ```
 
-Edit the `ExecStart` path in the unit if the repository is not at
-`~/source/repos/ClarkVideoArchiver`. On a headless machine, run
-`sudo loginctl enable-linger "$USER"` once so it starts at boot rather than at
-login.
+It checks Python, ffmpeg and yt-dlp (including `curl_cffi`) against the PATH
+the unit runs with, writes the unit to `~/.config/systemd/user/` with
+`ExecStart` pointing at this checkout, enables and starts it, and checks that
+`http://127.0.0.1:8788/api/health` answers. Re-run it after moving the
+repository or pulling a changed unit. If no Firefox profile exists it comments
+out `CVA_YTDLP_COOKIES_FROM_BROWSER`, since naming a browser with no profile
+makes every yt-dlp job fail; edit the installed unit to name the browser you
+sign in with.
+
+`--boot` turns on systemd *linger* for your user (`loginctl enable-linger`),
+which asks for sudo on most systems. Without it a user unit starts only once
+you log in, so after a reboot the helper is down until then.
+
+By hand, the same thing is:
+
+```bash
+cp server/cva-helper.service ~/.config/systemd/user/   # then fix ExecStart if needed
+systemctl --user daemon-reload
+systemctl --user enable --now cva-helper.service
+sudo loginctl enable-linger "$USER"                    # optional: start at boot
+```
+
+Status and log: `systemctl --user status cva-helper` and
+`journalctl --user -u cva-helper -f`.
 
 ### Windows
 

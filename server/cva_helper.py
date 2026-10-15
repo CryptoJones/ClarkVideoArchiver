@@ -271,6 +271,43 @@ def run_ffmpeg_plain(job: Job, out: Path, map_args: list[str] | None = None) -> 
 
 YTDLP_PCT = re.compile(r"\[download\]\s+([0-9.]+)%")
 
+# Vimeo and a growing list of other sites answer 401/403 unless the request
+# looks like a real browser's. yt-dlp can impersonate one, but only through the
+# optional curl_cffi package, which a bare `pip install yt-dlp` and the
+# zipapp release both leave out. yt-dlp says so in a warning that is easy to
+# miss above the HTTP error it causes, so the fix is spelled out instead.
+YTDLP_NO_IMPERSONATE = "no impersonate target is available"
+YTDLP_IMPERSONATE_FIX = (
+    "yt-dlp could not impersonate a browser, which this site requires. "
+    'Reinstall it with curl_cffi: pipx install --force "yt-dlp[default,curl-cffi]" '
+    "(or use yt-dlp's standalone release binary, which bundles it), "
+    "then retry. See server/README.md."
+)
+
+
+def ytdlp_failure(output: str) -> str:
+    """The message a failed yt-dlp run is reported with. Job messages are
+    capped at 500 characters, so a known fix goes first and the tail of
+    yt-dlp's own output fills what is left."""
+    output = output.strip()
+    if YTDLP_NO_IMPERSONATE in output:
+        return f"{YTDLP_IMPERSONATE_FIX}\n\n{output[-(498 - len(YTDLP_IMPERSONATE_FIX)):]}"
+    return output[-500:] or "yt-dlp failed"
+
+
+def ytdlp_can_impersonate() -> bool | None:
+    """True when yt-dlp lists a usable impersonation target, False when it
+    lists only unavailable ones, None when it could not be asked."""
+    try:
+        res = subprocess.run(["yt-dlp", "--list-impersonate-targets"],
+                             capture_output=True, timeout=60, check=False, **TEXT)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    rows = [ln for ln in (res.stdout + res.stderr).splitlines() if "curl_cffi" in ln]
+    if not rows:
+        return None
+    return any("unavailable" not in ln for ln in rows)
+
 
 def run_ytdlp(job: Job) -> Path:
     """Page URLs. yt-dlp resolves the real media, picks formats and, with
@@ -319,7 +356,7 @@ def run_ytdlp(job: Job) -> Path:
     proc.wait()
 
     if proc.returncode != 0:
-        raise RuntimeError("".join(tail).strip()[-500:] or "yt-dlp failed")
+        raise RuntimeError(ytdlp_failure("".join(tail)))
 
     produced = sorted(
         (p for p in job.out_dir.iterdir() if p.is_file()),
@@ -350,7 +387,7 @@ def run_job(job_id: str) -> None:
         else:
             raise RuntimeError(
                 "That URL needs yt-dlp to resolve, which is not installed. "
-                "Install it (pip install yt-dlp) or pass a direct media URL."
+                'Install it (pipx install "yt-dlp[default,curl-cffi]") or pass a direct media URL.'
             )
         set_state(job, state="done", progress=100.0, path=path, message="")
     except Exception as exc:  # noqa: BLE001 - surfaced to the client verbatim
@@ -592,7 +629,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{SERVICE} v{VERSION} on http://{args.host}:{args.port}")
     print(f"  output   {out}")
     print(f"  ffmpeg   {'yes' if have('ffmpeg') else 'NO'}")
-    print(f"  yt-dlp   {'yes' if have('yt-dlp') else 'no (page URLs unavailable)'}")
+    if not have("yt-dlp"):
+        print("  yt-dlp   no (page URLs unavailable)")
+    elif ytdlp_can_impersonate() is False:
+        print("  yt-dlp   yes, but without browser impersonation (curl_cffi missing):")
+        print("           Vimeo and similar sites will fail with HTTP 401/403. Fix:")
+        print('           pipx install --force "yt-dlp[default,curl-cffi]"')
+    else:
+        print("  yt-dlp   yes")
     print(f"  token    {'required' if args.token else 'not set'}")
     if args.host not in {"127.0.0.1", "localhost", "::1"}:
         print("  WARNING: not bound to loopback; anyone who can reach this port can queue jobs")
