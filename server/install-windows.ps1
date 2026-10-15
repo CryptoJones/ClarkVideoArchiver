@@ -92,8 +92,12 @@ if ($existing) {
 # Mirrors the unit: ExecStart -> Action, WantedBy=default.target -> AtLogOn,
 # Restart=on-failure -> run-windows.ps1's own loop plus the task-level retry
 # below as a backstop should the wrapper itself die.
-$action = New-ScheduledTaskAction -Execute $powershell `
-    -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $runner) `
+#
+# Launched through a headless conhost: when Windows Terminal is the default
+# terminal it ignores -WindowStyle Hidden and leaves a visible window open.
+$conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
+$action = New-ScheduledTaskAction -Execute $conhost `
+    -Argument ('--headless "{0}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}"' -f $powershell, $runner) `
     -WorkingDirectory $serverDir
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
