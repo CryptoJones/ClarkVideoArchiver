@@ -193,14 +193,20 @@
             </div>
             <p class="hint">Linux:</p>
             <div class="cmd">
-              <code>sudo apt install ffmpeg &amp;&amp; pip install yt-dlp</code>
+              <code>sudo apt install ffmpeg pipx &amp;&amp; pipx install "yt-dlp[default,curl-cffi]"</code>
               <button type="button" class="copy">Copy</button>
             </div>
             <p class="hint">macOS:</p>
             <div class="cmd">
-              <code>brew install ffmpeg yt-dlp</code>
+              <code>brew install ffmpeg pipx &amp;&amp; pipx install "yt-dlp[default,curl-cffi]"</code>
               <button type="button" class="copy">Copy</button>
             </div>
+            <p class="hint">
+              The <code class="inline">curl-cffi</code> part matters: without it
+              yt-dlp cannot pass as a browser, and Vimeo and similar sites refuse
+              it with HTTP 401. A plain <code class="inline">pip install yt-dlp</code>
+              leaves it out; the winget package includes it.
+            </p>
           </li>
           <li>
             <h3>Start the helper</h3>
@@ -215,11 +221,20 @@
               <button type="button" class="copy">Copy</button>
             </div>
             <p>
-              <strong>Linux or macOS:</strong> run this from the folder holding
-              the extension source. It prints the address it is listening on,
-              then keeps running &mdash; leave that terminal open while you use
-              it. (A systemd user unit is also available; see
-              <code>server/README.md</code>.)
+              <strong>Linux:</strong> run the setup script once from the folder
+              holding the extension source. It installs a systemd user service
+              that starts the helper at login and restarts it if it fails. Add
+              <code class="inline">--boot</code> to start it at boot as well
+              (asks for sudo).
+            </p>
+            <div class="cmd">
+              <code>./server/install-linux.sh</code>
+              <button type="button" class="copy">Copy</button>
+            </div>
+            <p>
+              <strong>macOS, or to run it by hand:</strong> run this from the
+              same folder. It prints the address it is listening on, then keeps
+              running &mdash; leave that terminal open while you use it.
             </p>
             <div class="cmd">
               <code>./server/cva_helper.py</code>
@@ -338,6 +353,10 @@
           <tr>
             <td>Test connection fails</td>
             <td>Check the helper terminal is still running and the port matches what it printed. If you started it with <code class="inline">--token</code>, the same token must be entered here.</td>
+          </tr>
+          <tr>
+            <td>Helper fails with HTTP Error 401 and &ldquo;no impersonate target is available&rdquo;</td>
+            <td>yt-dlp is missing <code class="inline">curl_cffi</code>, which Vimeo and similar sites require. Reinstall it with <code class="inline">pipx install --force "yt-dlp[default,curl-cffi]"</code> (Windows: <code class="inline">winget install yt-dlp.yt-dlp</code>), then press Download again.</td>
           </tr>
           <tr>
             <td>A download stopped partway</td>
